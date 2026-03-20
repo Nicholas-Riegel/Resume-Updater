@@ -1,0 +1,105 @@
+{
+  "name": "Nicholas Riegel",
+  "contact": {
+    "email": "nicholaspriegel@gmail.com",
+    "linkedin": "https://linkedin.com/in/nicholas-riegel",
+    "github": "https://github.com/Nicholas-Riegel",
+    "location": "Bern, Switzerland"
+  },
+  "summary": "AI Software Engineer and Full-Stack Developer with 5+ years of experience building scalable web applications and AI-powered systems. Experienced in developing LLM and Generative AI-powered applications, leveraging Python, FastAPI, React, and PostgreSQL. Strong background in REST APIs, containerized architectures, and cloud-ready backend systems.",
+  "experience": [
+    {
+      "company": "B.E. Moore, LLC",
+      "title": "Software Engineer",
+      "start_date": "Jul 2024",
+      "end_date": "Jan 2026",
+      "bullets": [
+        "Developed AI-powered collaboration tools integrating LLMs into productivity workflows, improving team efficiency and automating repetitive tasks",
+        "Built an AI collaborative chat platform using Python, FastAPI, PostgreSQL, and React",
+        "Developed an AI email automation system capable of analyzing, categorizing, and drafting responses to incoming messages",
+        "Created a browser extension integrating LLM capabilities into web workflows",
+        "Designed backend APIs for AI interaction pipelines using FastAPI and SQLAlchemy",
+        "Integrated generative AI models via OpenAI and DeepSeek APIs",
+        "Containerized services using Docker for scalable deployment"
+      ]
+    },
+    {
+      "company": "General Assembly",
+      "title": "Software Engineering Student",
+      "start_date": "Apr 2024",
+      "end_date": "Jun 2024",
+      "bullets": [
+        "Built full-stack web applications across a 3-month intensive program",
+        "Focused on JavaScript/TypeScript, React, Python, SQL, PostgreSQL, Git, and testing frameworks"
+      ]
+    },
+    {
+      "company": "CourseStorm, Inc.",
+      "title": "Software QA Engineer",
+      "start_date": "Nov 2021",
+      "end_date": "Mar 2024",
+      "bullets": [
+        "First Quality Assurance Engineer at a midsized SaaS company",
+        "Developed automated frontend testing infrastructure using PHP and Laravel Dusk, significantly reducing production bugs and improving release reliability"
+      ]
+    },
+    {
+      "company": "University of Bern / The Hill School",
+      "title": "Teacher",
+      "start_date": "Aug 2015",
+      "end_date": "Jun 2020",
+      "bullets": [
+        "Taught at academic institutions in Switzerland and the USA"
+      ]
+    }
+  ],
+  "skills": [
+    "Python",
+    "JavaScript",
+    "TypeScript",
+    "Java",
+    "C#",
+    "SQL",
+    "LLM Integration",
+    "Generative AI",
+    "Prompt Engineering",
+    "RAG-style workflows",
+    "OpenAI API",
+    "DeepSeek API",
+    "Agent-style automation",
+    "FastAPI",
+    "Node.js",
+    "Express",
+    "Spring Boot",
+    ".NET Core",
+    "Laravel",
+    "REST APIs",
+    "React",
+    "Next.js",
+    "Redux Toolkit",
+    "Tailwind CSS",
+    "PostgreSQL",
+    "MySQL",
+    "MongoDB",
+    "Docker",
+    "AWS",
+    "Git",
+    "Jest",
+    "Mocha",
+    "TDD",
+    "CI/CD",
+    "Agile",
+    "German (B2)",
+    "French (B2)"
+  ],
+  "education": [
+    {
+      "institution": "University of Toronto",
+      "degree": "PhD - Philosophy"
+    },
+    {
+      "institution": "Udemy",
+      "degree": "Data Structures & Algorithms (in progress)"
+    }
+  ]
+}

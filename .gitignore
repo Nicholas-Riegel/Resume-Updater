@@ -1,0 +1,25 @@
+# Virtual environment
+backend/.venv/
+
+# Environment variables (contains secrets — never commit this)
+.env
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS junk
+.DS_Store
+
+# VS Code settings (optional — remove this line if you want to share settings with collaborators)
+.vscode/
+
+# Generated output files (resumes will be generated at runtime, not stored in the repo)
+backend/output/
+
+# Personal command reference (local only)
+COMMANDS.md
+
+# copilot commands
+.github/

@@ -1,0 +1,12 @@
+# Core backend
+fastapi
+uvicorn            # runs the FastAPI development server
+pydantic
+python-dotenv      # loads .env file for API keys and config
+
+# Document generation
+docxtpl            # DOCX templating (Jinja2 on top of python-docx)
+weasyprint         # HTML → PDF rendering
+
+# AI
+openai             # works with both OpenAI and Ollama (same SDK, different base URL)
