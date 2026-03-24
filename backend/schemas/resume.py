@@ -9,11 +9,14 @@ from typing import Optional
 # Building blocks — these smaller models get composed into the full resume
 # ---------------------------------------------------------------------------
 
-class ContactInfo(BaseModel):
-    email: str
-    linkedin: Optional[str] = None
-    github: Optional[str] = None
-    location: Optional[str] = None   # e.g. "Toronto, ON"
+class SkillCategory(BaseModel):
+    # Represents one row in the skills section, e.g.:
+    # { "category": "Languages", "entries": ["Python", "JavaScript"] }
+    # In the template: {{ cat.category }}: {{ cat.entries | join(", ") }}
+    # NOTE: field is named 'entries' not 'items' — 'items' clashes with the
+    # built-in dict.items() method, which breaks Jinja2 attribute lookup.
+    category: str
+    entries: list[str]
 
 
 class ExperienceEntry(BaseModel):
@@ -24,11 +27,6 @@ class ExperienceEntry(BaseModel):
     # Dates are strings, not date objects — resume formats vary too much to parse reliably.
     bullets: list[str]               # the bullet points describing what you did in this role
 
-
-class EducationEntry(BaseModel):
-    institution: str                 # e.g. "University of Toronto"
-    degree: str                      # e.g. "B.Sc. Computer Science"
-
 # ---------------------------------------------------------------------------
 # Top-level schemas
 # ---------------------------------------------------------------------------
@@ -38,12 +36,9 @@ class BaseResume(BaseModel):
     The complete, unmodified resume — loaded from base_resume.json.
     This is the single source of truth. The AI reads from it but never writes to it.
     """
-    name: str
-    contact: ContactInfo
     summary: Optional[str] = None    # a short professional summary — not everyone has one
     experience: list[ExperienceEntry]
-    skills: list[str]                # flat list, e.g. ["Python", "React", "Docker"]
-    education: list[EducationEntry]
+    skills: list[SkillCategory]      # categorised, e.g. [{category: "Languages", items: [...]}]
 
 
 class TailoredExperienceEntry(BaseModel):
@@ -66,9 +61,6 @@ class TailoredResumeOutput(BaseModel):
     Mirrors BaseResume in structure, but is a separate type so it can be
     validated independently before it touches the document generator.
     """
-    name: str
-    contact: ContactInfo             # passed through unchanged from the base resume
     summary: Optional[str] = None    # AI may write or refine a summary for the specific job
-    skills: list[str]                # AI may reorder these to prioritise what the job asks for
+    skills: list[SkillCategory]      # AI may reorder categories/items to prioritise what the job asks for
     experience: list[TailoredExperienceEntry]
-    education: list[EducationEntry]  # passed through unchanged — the AI never touches education

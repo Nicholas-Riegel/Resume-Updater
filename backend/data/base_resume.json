@@ -1,11 +1,4 @@
 {
-  "name": "Nicholas Riegel",
-  "contact": {
-    "email": "nicholaspriegel@gmail.com",
-    "linkedin": "https://linkedin.com/in/nicholas-riegel",
-    "github": "https://github.com/Nicholas-Riegel",
-    "location": "Bern, Switzerland"
-  },
   "summary": "AI Software Engineer and Full-Stack Developer with 5+ years of experience building scalable web applications and AI-powered systems. Experienced in developing LLM and Generative AI-powered applications, leveraging Python, FastAPI, React, and PostgreSQL. Strong background in REST APIs, containerized architectures, and cloud-ready backend systems.",
   "experience": [
     {
@@ -54,52 +47,13 @@
     }
   ],
   "skills": [
-    "Python",
-    "JavaScript",
-    "TypeScript",
-    "Java",
-    "C#",
-    "SQL",
-    "LLM Integration",
-    "Generative AI",
-    "Prompt Engineering",
-    "RAG-style workflows",
-    "OpenAI API",
-    "DeepSeek API",
-    "Agent-style automation",
-    "FastAPI",
-    "Node.js",
-    "Express",
-    "Spring Boot",
-    ".NET Core",
-    "Laravel",
-    "REST APIs",
-    "React",
-    "Next.js",
-    "Redux Toolkit",
-    "Tailwind CSS",
-    "PostgreSQL",
-    "MySQL",
-    "MongoDB",
-    "Docker",
-    "AWS",
-    "Git",
-    "Jest",
-    "Mocha",
-    "TDD",
-    "CI/CD",
-    "Agile",
-    "German (B2)",
-    "French (B2)"
-  ],
-  "education": [
-    {
-      "institution": "University of Toronto",
-      "degree": "PhD - Philosophy"
-    },
-    {
-      "institution": "Udemy",
-      "degree": "Data Structures & Algorithms (in progress)"
-    }
+    { "category": "Languages",                "entries": ["Python", "JavaScript/TypeScript", "Java", "SQL"] },
+    { "category": "AI & Machine Learning",    "entries": ["LLM Integration & Application Development", "Generative AI", "Prompt Engineering", "AI Assistants", "RAG-style workflows", "OpenAI & DeepSeek APIs", "Agent-style automation tools", "AI chat systems"] },
+    { "category": "Backend / Full-Stack",     "entries": ["FastAPI (Python)", "Node.js (Express)", "Spring Boot", "Laravel", "REST APIs", "MVC"] },
+    { "category": "Frontend",                 "entries": ["React", "Next.js", "Redux Toolkit", "Tailwind CSS", "HTML5", "CSS3", "SVG", "Vite"] },
+    { "category": "Databases",                "entries": ["PostgreSQL", "MySQL", "MongoDB"] },
+    { "category": "Tools/Platforms",          "entries": ["Git", "GitHub", "Docker", "AWS", "Postman", "TablePlus", "Jira"] },
+    { "category": "Testing/QA",               "entries": ["Jest", "Mocha", "TDD"] },
+    { "category": "Practices",                "entries": ["Agile", "Scrum", "Kanban", "OOP", "CI/CD"] }
   ]
 }

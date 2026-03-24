@@ -110,20 +110,29 @@ No other code changes needed to switch providers.
 - **HTML → PDF:** Jinja2 HTML/CSS template rendered via WeasyPrint from static sample data. Optionally render the same template with Puppeteer for quality comparison.
 - **Decision point:** Choose primary output format (or support both) before proceeding.
 
-### Phase 2: AI Integration *(depends on Phase 0)*
+### Phase 2: Template Polish *(depends on Phase 1)*
+- Style the DOCX template in LibreOffice: fonts, sizes, heading formatting, spacing between sections
+- Format the name as a large bold header; contact details on one line
+- Style section headings (EXPERIENCE, SKILLS, EDUCATION) as bold, visually distinct
+- Format experience entries: job title bold, company and date range on the same line
+- Format bullet points as proper list items
+- Fix skills rendering: comma-separated on one line using `{{ skills | join(', ') }}`
+- Fix `&` character escaping using the `| e` Jinja2 filter where needed
+- Re-run `generate_docx.py` and verify output looks like a professional resume
+
+### Phase 3: AI Integration *(depends on Phase 0)*
 - Implement AI provider abstraction class
 - Design prompt: pass `BaseResume` JSON + sanitized job description, instruct AI to return `TailoredResumeOutput` JSON only
 - Use OpenAI structured outputs (or JSON mode) to enforce schema
 - Add retry logic for malformed AI responses
 
-### Phase 3: API Endpoint *(depends on Phases 1 & 2)*
+### Phase 4: API Endpoint *(depends on Phases 2 & 3)*
 - `POST /generate`: accepts `job_description` (string) + `base_resume` (JSON), returns `FileResponse`
-- Query param `?format=docx` or `?format=pdf` to select output type
 - Wire full pipeline: sanitize → AI call → Pydantic validate → template render → download
 - Configure `CORSMiddleware` to allow requests from the Chrome extension (`chrome-extension://*`)
 - Define output filename convention: `resume_<company>_<date>.docx` (derived from AI output or job description)
 
-### Phase 4: Browser Extension *(depends on Phase 3)*
+### Phase 5: Browser Extension *(depends on Phase 4)*
 - Chrome Manifest V3 extension
 - Declare `host_permissions: ["*://*/*"]` (or scoped to target job sites) to allow content script injection — this is standard MV3 boilerplate
 - Content script: extracts job description text from the active tab; implement site-specific selectors for primary targets (LinkedIn, Indeed) with a fallback heuristic (largest text block)
@@ -134,10 +143,11 @@ No other code changes needed to switch providers.
 
 ## MVP Milestones
 
-1. DOCX and/or PDF generated from static resume data
-2. AI returns validated structured JSON from a real job description
-3. Full pipeline: job description in → tailored document downloaded
-4. Browser extension triggers the pipeline end-to-end with one click
+1. DOCX generated from static resume data (plain structure verified)
+2. DOCX output styled as a professional resume
+3. AI returns validated structured JSON from a real job description
+4. Full pipeline: job description in → tailored document downloaded
+5. Browser extension triggers the pipeline end-to-end with one click
 
 ---
 
