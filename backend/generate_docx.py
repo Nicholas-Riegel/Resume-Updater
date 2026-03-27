@@ -1,14 +1,22 @@
-# Prototype script — Phase 1.
-# Generates a DOCX resume from base_resume.json using python-docx for full
-# programmatic control over fonts, spacing, and layout.
+# backend/generate_docx.py
+#
+# Builds a formatted DOCX resume from a TailoredResumeOutput object.
+#
+# The core logic lives in generate_resume_docx(), which the FastAPI endpoint
+# calls directly. The if __name__ == "__main__" block at the bottom preserves
+# the original standalone behaviour so you can still run:
+#
+#   python generate_docx.py
+#
+# to generate a sample document from base_resume.json for visual inspection.
 
-import json
 from pathlib import Path
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from schemas.resume import BaseResume
+
+from schemas.resume import TailoredResumeOutput
 
 # ---------------------------------------------------------------------------
 # Style constants — tweak these to change the look of the whole document
@@ -90,144 +98,175 @@ def add_bullet(doc, text):
     return p
 
 
-# ---------------------------------------------------------------------------
-# Load and validate the resume data
-# ---------------------------------------------------------------------------
-data_path = Path(__file__).parent / "data" / "base_resume.json"
-with open(data_path) as f:
-    raw = json.load(f)
-
-# Pydantic validates the JSON matches our schema, then .model_dump() converts
-# it back to a plain dict that we can work with below.
-resume = BaseResume(**raw).model_dump()
 
 # ---------------------------------------------------------------------------
-# Build the document
-# ---------------------------------------------------------------------------
-doc = Document()
-
-# Set page margins — 0.75" all round gives more usable space than Word's 1" default.
-for section in doc.sections:
-    section.top_margin    = Inches(0.75)
-    section.bottom_margin = Inches(0.75)
-    section.left_margin   = Inches(0.75)
-    section.right_margin  = Inches(0.75)
-
-# Every new Document() starts with one empty paragraph — remove it so we
-# don't get a blank line at the top of the output.
-for p in doc.paragraphs:
-    p._element.getparent().remove(p._element)
-
-# ---------------------------------------------------------------------------
-# HARDCODED HEADER — name, title, and contact details never change
+# Main function
 # ---------------------------------------------------------------------------
 
-# Name — large and bold
-p = doc.add_paragraph()
-_fmt_para(p, space_before=0, space_after=2)
-_fmt_run(p.add_run("Nicholas Riegel"), size=Pt(22), bold=True)
+def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Path:
+    """
+    Build and save a DOCX resume from a TailoredResumeOutput object.
 
-# Title line
-p = doc.add_paragraph()
-_fmt_para(p, space_before=0, space_after=2)
-_fmt_run(p.add_run("AI Software Engineer  |  Full-Stack Developer"), size=Pt(11))
+    Args:
+        resume:      The assembled resume data (AI summary + passthrough content).
+        output_path: Where to save the .docx file.
 
-# Citizenship / location
-p = doc.add_paragraph()
-_fmt_para(p, space_before=0, space_after=2)
-_fmt_run(p.add_run("Citizenship: Switzerland  |  Location: Bern, Switzerland"), size=SMALL_SIZE, color=DARK_GRAY)
+    Returns:
+        output_path, so callers can immediately pass it to FastAPI's FileResponse.
+    """
+    # ---------------------------------------------------------------------------
+    # Build the document
+    # ---------------------------------------------------------------------------
+    doc = Document()
 
-# Contact line
-p = doc.add_paragraph()
-_fmt_para(p, space_before=0, space_after=10)
-_fmt_run(p.add_run("nicholaspriegel@gmail.com  |  linkedin.com/in/nicholas-riegel  |  github.com/Nicholas-Riegel"), size=SMALL_SIZE, color=DARK_GRAY)
+    # Set page margins — 0.75" all round gives more usable space than Word's 1" default.
+    for section in doc.sections:
+        section.top_margin    = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin   = Inches(0.75)
+        section.right_margin  = Inches(0.75)
 
-# -- Summary ----------------------------------------------------------------
-if resume["summary"]:
-    p = doc.add_paragraph()
-    _fmt_para(p, space_before=0, space_after=8)
-    _fmt_run(p.add_run(resume["summary"]))
+    # Every new Document() starts with one empty paragraph — remove it so we
+    # don't get a blank line at the top of the output.
+    for p in doc.paragraphs:
+        p._element.getparent().remove(p._element)
 
-# -- Technical Skills -------------------------------------------------------
-add_section_header(doc, "TECHNICAL SKILLS")
+    # ---------------------------------------------------------------------------
+    # HARDCODED HEADER — name, title, and contact details never change
+    # ---------------------------------------------------------------------------
 
-for cat in resume["skills"]:
-    # Each category occupies one paragraph: bold label, then normal-weight entries.
+    # Name — large and bold
     p = doc.add_paragraph()
     _fmt_para(p, space_before=0, space_after=2)
-    _fmt_run(p.add_run(cat["category"] + ":  "), bold=True)
-    _fmt_run(p.add_run(", ".join(cat["entries"])))
+    _fmt_run(p.add_run("Nicholas Riegel"), size=Pt(22), bold=True)
 
-# -- Work Experience --------------------------------------------------------
-add_section_header(doc, "WORK EXPERIENCE")
-
-for job in resume["experience"]:
-    # Job title — bold
+    # Title line
     p = doc.add_paragraph()
-    _fmt_para(p, space_before=7, space_after=1)
-    _fmt_run(p.add_run(job["title"]), bold=True)
+    _fmt_para(p, space_before=0, space_after=2)
+    _fmt_run(p.add_run("AI Software Engineer  |  Full-Stack Developer"), size=Pt(11))
 
-    # Company, date range, and location on one line, in muted gray
-    start = job.get("start_date", "")
-    end   = job.get("end_date", "")
-    dates = f"{start}\u2013{end}" if (start or end) else ""
-    parts = [job["company"], dates, job.get("location") or ""]
-    line  = "   |   ".join(p for p in parts if p)  # skip any empty parts
-    p2 = doc.add_paragraph()
-    _fmt_para(p2, space_before=0, space_after=3)
-    _fmt_run(p2.add_run(line), size=SMALL_SIZE, color=DARK_GRAY)
+    # Citizenship / location
+    p = doc.add_paragraph()
+    _fmt_para(p, space_before=0, space_after=2)
+    _fmt_run(p.add_run("Citizenship: Switzerland  |  Location: Bern, Switzerland"), size=SMALL_SIZE, color=DARK_GRAY)
 
-    # Bullet points
-    for bullet in job["bullets"]:
-        add_bullet(doc, bullet)
+    # Contact line
+    p = doc.add_paragraph()
+    _fmt_para(p, space_before=0, space_after=10)
+    _fmt_run(p.add_run("nicholaspriegel@gmail.com  |  linkedin.com/in/nicholas-riegel  |  github.com/Nicholas-Riegel"), size=SMALL_SIZE, color=DARK_GRAY)
 
-# ---------------------------------------------------------------------------
-# HARDCODED FOOTER SECTIONS — these never change
-# ---------------------------------------------------------------------------
+    # -- Summary ----------------------------------------------------------------
+    if resume.summary:
+        p = doc.add_paragraph()
+        _fmt_para(p, space_before=0, space_after=8)
+        _fmt_run(p.add_run(resume.summary))
 
-# -- Professional Development -----------------------------------------------
-add_section_header(doc, "PROFESSIONAL DEVELOPMENT")
+    # -- Technical Skills -------------------------------------------------------
+    add_section_header(doc, "TECHNICAL SKILLS")
 
-prof_dev = [
-    ("Data Structures & Algorithms  |  Udemy  |  in progress",
-     "Completing a comprehensive course covering Big O notation, recursion, sorting and searching algorithms, linked lists, trees, graphs, and dynamic programming."),
-    ("Advanced German  |  Französische Kirche  |  Bern",
-     "Studying and learning advanced German."),
-]
-for title, description in prof_dev:
+    for cat in resume.skills:
+        # Each category occupies one paragraph: bold label, then normal-weight entries.
+        p = doc.add_paragraph()
+        _fmt_para(p, space_before=0, space_after=2)
+        _fmt_run(p.add_run(cat.category + ":  "), bold=True)
+        _fmt_run(p.add_run(", ".join(cat.entries)))
+
+    # -- Work Experience --------------------------------------------------------
+    add_section_header(doc, "WORK EXPERIENCE")
+
+    for job in resume.experience:
+        # Job title — bold
+        p = doc.add_paragraph()
+        _fmt_para(p, space_before=7, space_after=1)
+        _fmt_run(p.add_run(job.title), bold=True)
+
+        # Company, date range, and location on one line, in muted gray
+        start = job.start_date or ""
+        end   = job.end_date   or ""
+        dates = f"{start}\u2013{end}" if (start or end) else ""
+        parts = [job.company, dates, job.location or ""]
+        line  = "   |   ".join(part for part in parts if part)  # skip empty parts
+        p2 = doc.add_paragraph()
+        _fmt_para(p2, space_before=0, space_after=3)
+        _fmt_run(p2.add_run(line), size=SMALL_SIZE, color=DARK_GRAY)
+
+        # Bullet points
+        for bullet in job.bullets:
+            add_bullet(doc, bullet)
+
+    # ---------------------------------------------------------------------------
+    # HARDCODED FOOTER SECTIONS — these never change
+    # ---------------------------------------------------------------------------
+
+    # -- Professional Development -----------------------------------------------
+    add_section_header(doc, "PROFESSIONAL DEVELOPMENT")
+
+    prof_dev = [
+        ("Data Structures & Algorithms  |  Udemy  |  in progress",
+         "Completing a comprehensive course covering Big O notation, recursion, sorting and searching algorithms, linked lists, trees, graphs, and dynamic programming."),
+        ("Advanced German  |  Französische Kirche  |  Bern",
+         "Studying and learning advanced German."),
+    ]
+    for title, description in prof_dev:
+        p = doc.add_paragraph()
+        _fmt_para(p, space_before=5, space_after=1)
+        _fmt_run(p.add_run(title), bold=True)
+        p2 = doc.add_paragraph()
+        _fmt_para(p2, space_before=0, space_after=4)
+        _fmt_run(p2.add_run(description))
+
+    # -- Education --------------------------------------------------------------
+    add_section_header(doc, "EDUCATION")
+
     p = doc.add_paragraph()
     _fmt_para(p, space_before=5, space_after=1)
-    _fmt_run(p.add_run(title), bold=True)
+    _fmt_run(p.add_run("University of Toronto"), bold=True)
     p2 = doc.add_paragraph()
     _fmt_para(p2, space_before=0, space_after=4)
-    _fmt_run(p2.add_run(description))
+    _fmt_run(p2.add_run("PhD — Philosophy"))
 
-# -- Education --------------------------------------------------------------
-add_section_header(doc, "EDUCATION")
+    # -- Natural Languages ------------------------------------------------------
+    add_section_header(doc, "NATURAL LANGUAGES")
 
-p = doc.add_paragraph()
-_fmt_para(p, space_before=5, space_after=1)
-_fmt_run(p.add_run("University of Toronto"), bold=True)
-p2 = doc.add_paragraph()
-_fmt_para(p2, space_before=0, space_after=4)
-_fmt_run(p2.add_run("PhD — Philosophy"))
+    languages = [
+        "English — fluent",
+        "German — intermediate (B1/B2)",
+        "French — advanced intermediate (B2)",
+    ]
+    for lang in languages:
+        p = doc.add_paragraph()
+        _fmt_para(p, space_before=0, space_after=2)
+        _fmt_run(p.add_run(lang))
 
-# -- Natural Languages ------------------------------------------------------
-add_section_header(doc, "NATURAL LANGUAGES")
+    # ---------------------------------------------------------------------------
+    # Save
+    # ---------------------------------------------------------------------------
+    doc.save(output_path)
+    return output_path
 
-languages = [
-    "English — fluent",
-    "German — intermediate (B1/B2)",
-    "French — advanced intermediate (B2)",
-]
-for lang in languages:
-    p = doc.add_paragraph()
-    _fmt_para(p, space_before=0, space_after=2)
-    _fmt_run(p.add_run(lang))
 
 # ---------------------------------------------------------------------------
-# Save
+# Standalone mode — lets you run `python generate_docx.py` to visually
+# check the output without needing the full FastAPI server running.
 # ---------------------------------------------------------------------------
-output_path = Path(__file__).parent / "output" / "resume_sample.docx"
-doc.save(output_path)
-print(f"DOCX saved to {output_path}")
+if __name__ == "__main__":
+    import json
+    from schemas.resume import BaseResume
+
+    data_path = Path(__file__).parent / "data" / "base_resume.json"
+    with open(data_path) as f:
+        raw = json.load(f)
+
+    # Load as BaseResume first, then convert to TailoredResumeOutput.
+    # Both types now share the same ExperienceEntry and SkillCategory types,
+    # so no .model_dump() conversion is needed — the objects pass straight through.
+    base   = BaseResume(**raw)
+    resume = TailoredResumeOutput(
+        summary    = base.summary,
+        skills     = base.skills,
+        experience = base.experience,
+    )
+
+    out = Path(__file__).parent / "output" / "resume_sample.docx"
+    generate_resume_docx(resume, out)
+    print(f"DOCX saved to {out}")

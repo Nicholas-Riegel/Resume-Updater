@@ -42,27 +42,15 @@ class BaseResume(BaseModel):
     skills: list[SkillCategory]      # categorised, e.g. [{category: "Languages", items: [...]}]
 
 
-class TailoredExperienceEntry(BaseModel):
-    """
-    One experience entry as rewritten by the AI.
-    Kept as a separate type from ExperienceEntry so we can add
-    AI-specific validation rules here later (e.g. checking that the
-    company name actually exists in the base resume).
-    """
-    company: str
-    title: str
-    location: Optional[str] = None
-    start_date: Optional[str] = None  # mirrors ExperienceEntry — optional so dates can be hidden
-    end_date: Optional[str] = None
-    bullets: list[str]               # reworded/reordered bullets — no new facts allowed
-
-
 class TailoredResumeOutput(BaseModel):
     """
     The full output returned by the AI after tailoring.
     Mirrors BaseResume in structure, but is a separate type so it can be
     validated independently before it touches the document generator.
+
+    v1: only the summary is AI-generated. Skills and experience are passed
+    through verbatim from BaseResume, so they share the same types.
     """
-    summary: Optional[str] = None    # AI may write or refine a summary for the specific job
-    skills: list[SkillCategory]      # AI may reorder categories/items to prioritise what the job asks for
-    experience: list[TailoredExperienceEntry]
+    summary: Optional[str] = None
+    skills: list[SkillCategory]
+    experience: list[ExperienceEntry]

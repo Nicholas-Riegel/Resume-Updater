@@ -904,3 +904,406 @@ Steps 2 and 3 built `prompts.py` and `tailor.py` for a full-resume rewrite. We'r
 - [x] Delete `test_tailor.py` once you're satisfied the pipeline is working.
 
 ---
+
+### ~~Step 6 — Verify the OpenAI provider path~~ — **Skipped.** OpenAI API requires a paid account (separate from ChatGPT). Ollama is confirmed working and is the default for all development. The provider switch in `ai_client.py` is straightforward — this step can be revisited if OpenAI access becomes available later. The test script is preserved below for reference.
+
+<details>
+<summary>Test script (for future reference)</summary>
+
+```python
+# backend/test_openai.py
+#
+# Temporary smoke-test for the OpenAI provider path.
+# Delete this file once the test passes.
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from schemas.resume import BaseResume
+from tailor import tailor_resume
+
+data_path = Path(__file__).parent / "data" / "base_resume.json"
+with open(data_path) as f:
+    raw = json.load(f)
+resume = BaseResume(**raw)
+
+job_description = """
+We're looking for a software engineer with experience in Python and web development.
+You'll build internal tools and APIs, collaborate closely with product and design,
+and contribute to a culture of technical excellence. Strong communication skills
+and the ability to work independently are essential.
+"""
+
+print("Calling OpenAI API...")
+result = tailor_resume(resume, job_description)
+
+print("\n--- Tailored Summary ---")
+print(result.summary)
+
+print(f"\n--- Experience entries: {len(result.experience)} (expected 4) ---")
+for job in result.experience:
+    print(f"  • {job.title} @ {job.company}")
+
+print(f"\n--- Skill categories: {len(result.skills)} ---")
+for cat in result.skills:
+    print(f"  • {cat.category}")
+
+print("\nDone.")
+```
+
+To run: set `AI_PROVIDER=openai` and `OPENAI_API_KEY=sk-...` in `.env`, then `python backend/test_openai.py`. Revert `.env` to `ollama` after.
+
+</details>
+
+---
+
+## Phase 4: FastAPI Endpoint
+
+**Goal:** Expose the AI pipeline as an HTTP API so the Chrome extension (Phase 5) can send a job description and receive a tailored DOCX file in return.
+
+By the end of this phase:
+- A single endpoint — `POST /generate` — accepts a job description and returns a downloadable `.docx` file
+- The full pipeline runs end-to-end: job description in → AI summary → assembled resume → DOCX → browser download
+- The server is running locally and can be called with `curl` to verify it works before any extension code is written
+
+### New packages needed
+
+Two extra packages are required for Phase 4 that weren't needed before:
+
+| Package | Why |
+|---|---|
+| `python-multipart` | Required by FastAPI to parse `multipart/form-data` requests (how we'll send the job description from the extension) |
+| `slowapi` | Rate limiting — prevents the endpoint from being hammered while the server is running on your local machine |
+
+- [x] Add both to `backend/requirements.txt`:
+
+  Open `backend/requirements.txt` and add a new section at the bottom:
+
+  ```
+  # API / server
+  python-multipart   # required by FastAPI to parse form data
+  slowapi            # rate limiting for the /generate endpoint
+  ```
+
+- [x] Install them:
+
+  ```bash
+  cd backend
+  source .venv/bin/activate
+  pip install python-multipart slowapi
+  cd ..
+  ```
+
+---
+
+### Step 1 — Refactor `generate_docx.py` into a callable function
+
+Right now `generate_docx.py` is a **standalone script** — it runs top-to-bottom when you call `python generate_docx.py`, pulling data from `base_resume.json` and hardcoding the output path. That's fine for prototyping, but the FastAPI endpoint needs to call it as a **function** — passing in a `TailoredResumeOutput` object and getting a file path back.
+
+This step rewrites `generate_docx.py` so:
+- All the document-building logic is wrapped in a function `generate_resume_docx(resume, output_path)`
+- A small `if __name__ == "__main__":` block at the bottom preserves the old standalone behaviour (so you can still run `python generate_docx.py` manually to check the output)
+
+- [x] Rewrite `backend/generate_docx.py` to wrap the document logic in a function:
+
+  The current file builds the document in a big top-level block. The change is:
+  1. Add `from schemas.resume import TailoredResumeOutput` to the imports (instead of `BaseResume`)
+  2. Wrap all the document-building code in `def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Path:`
+  3. Replace all hardcoded field references (e.g. `resume.experience`) with references to the `resume` parameter
+  4. Have the function `return output_path` after saving
+  5. Move the data loading + `generate_resume_docx(...)` call into an `if __name__ == "__main__":` block at the bottom
+
+  The function signature:
+
+  ```python
+  def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Path:
+      """
+      Build and save a DOCX resume from a TailoredResumeOutput object.
+
+      Args:
+          resume:      The assembled resume data (AI summary + passthrough content).
+          output_path: Where to save the .docx file.
+
+      Returns:
+          The output_path, so callers can immediately pass it to FileResponse.
+      """
+      doc = Document()
+      # ... all the existing document-building code, using `resume` instead of hardcoded data ...
+      doc.save(output_path)
+      return output_path
+  ```
+
+  The standalone block at the bottom (so `python generate_docx.py` still works):
+
+  ```python
+  if __name__ == "__main__":
+      import json
+      from schemas.resume import BaseResume
+
+      data_path = Path(__file__).parent / "data" / "base_resume.json"
+      with open(data_path) as f:
+          raw = json.load(f)
+
+      # Parse as BaseResume first, then convert to TailoredResumeOutput
+      base = BaseResume(**raw)
+      from schemas.resume import TailoredResumeOutput
+      resume = TailoredResumeOutput(
+          summary    = base.summary,
+          skills     = [s.model_dump() for s in base.skills],
+          experience = [e.model_dump() for e in base.experience],
+      )
+
+      out = Path(__file__).parent / "output" / "resume_sample.docx"
+      generate_resume_docx(resume, out)
+      print(f"DOCX saved to {out}")
+  ```
+
+- [x] Verify the refactor didn't break anything by running the standalone mode:
+
+  ```bash
+  cd backend
+  source .venv/bin/activate
+  python generate_docx.py
+  cd ..
+  ```
+
+  Open `backend/output/resume_sample.docx` — it should look exactly the same as before.
+
+---
+
+### Step 2 — Write `main.py`
+
+`main.py` is the FastAPI application. It defines the server, the CORS rules, the rate limiter, and the single `POST /generate` endpoint.
+
+**How the endpoint works:**
+
+```
+POST /generate
+  ├── receives: job_description (form field, plain text)
+  ├── loads:    base_resume.json from disk
+  ├── calls:    tailor_resume(resume, job_description)   → TailoredResumeOutput
+  ├── calls:    generate_resume_docx(result, tmp_path)   → .docx file
+  └── returns:  FileResponse (browser downloads the file)
+```
+
+Why form data (not JSON)? The Chrome extension will send a simple HTML form-style POST — one field, plain text. This is simpler and more reliable from a browser extension than sending a JSON body.
+
+Why load `base_resume.json` from disk on every request? For now this is fine — the file is small and local. Phase 5 may revisit this if we want the user to upload their own resume from the extension.
+
+- [x] Create `backend/main.py` (note: `request` parameter requires `: Request` type annotation for slowapi to work — added `Request` to the `fastapi` import and typed the parameter):
+
+  ```python
+  # backend/main.py
+  #
+  # The FastAPI application.
+  #
+  # Exposes one endpoint:
+  #   POST /generate
+  #     - accepts a job description as a form field
+  #     - loads the base resume from disk
+  #     - calls the AI to tailor the summary
+  #     - generates a DOCX file
+  #     - returns it as a file download
+  #
+  # Run with:
+  #   uvicorn main:app --reload --port 8000
+
+  import json
+  import tempfile
+  from datetime import date
+  from pathlib import Path
+
+  from fastapi import FastAPI, Form, HTTPException
+  from fastapi.middleware.cors import CORSMiddleware
+  from fastapi.responses import FileResponse
+  from slowapi import Limiter
+  from slowapi.util import get_remote_address
+  from slowapi.errors import RateLimitExceeded
+  from slowapi.middleware import SlowAPIMiddleware
+
+  from schemas.resume import BaseResume
+  from tailor import tailor_resume
+  from generate_docx import generate_resume_docx
+
+  # ---------------------------------------------------------------------------
+  # Rate limiter
+  # ---------------------------------------------------------------------------
+  # get_remote_address pulls the caller's IP from the request, which slowapi
+  # uses to track and enforce per-IP request limits.
+  limiter = Limiter(key_func=get_remote_address)
+
+  # ---------------------------------------------------------------------------
+  # FastAPI app
+  # ---------------------------------------------------------------------------
+  app = FastAPI(title="Resume Tailoring API")
+
+  # Attach the rate limiter to the app so it can intercept requests.
+  app.state.limiter = limiter
+  app.add_middleware(SlowAPIMiddleware)
+
+  # ---------------------------------------------------------------------------
+  # CORS — allow requests from the Chrome extension and local dev tools
+  # ---------------------------------------------------------------------------
+  # Why is CORS needed? Browsers (and Chrome extensions) block cross-origin
+  # requests by default. Without this middleware, the extension would be silently
+  # refused when it tries to POST to localhost:8000.
+  #
+  # "chrome-extension://*" covers any installed version of our extension.
+  # "http://localhost" / "http://127.0.0.1" cover manual testing in the browser.
+  app.add_middleware(
+      CORSMiddleware,
+      allow_origins=[
+          "chrome-extension://*",
+          "http://localhost",
+          "http://127.0.0.1",
+      ],
+      allow_methods=["POST"],
+      allow_headers=["Content-Type"],
+  )
+
+  # ---------------------------------------------------------------------------
+  # Base resume — loaded once at startup
+  # ---------------------------------------------------------------------------
+  # We load and validate the base resume when the server starts rather than on
+  # every request — the file doesn't change while the server is running, so
+  # there's no reason to re-read it each time.
+  _DATA_PATH = Path(__file__).parent / "data" / "base_resume.json"
+
+  with open(_DATA_PATH) as f:
+      _BASE_RESUME = BaseResume(**json.load(f))
+
+  # ---------------------------------------------------------------------------
+  # Endpoint
+  # ---------------------------------------------------------------------------
+
+  @app.post("/generate")
+  @limiter.limit("6/minute")   # at most 6 tailoring requests per minute per IP
+  async def generate(request, job_description: str = Form(...)):
+      """
+      Accept a job description, tailor the resume, and return a DOCX file.
+
+      `request` must be the first argument because slowapi needs access to the
+      raw request object to read the caller's IP for rate limiting. FastAPI
+      injects it automatically.
+
+      `job_description: str = Form(...)` tells FastAPI to read a form field
+      called `job_description` from the POST body. The `...` means it's required
+      — FastAPI will return a 422 error automatically if it's missing.
+      """
+      if not job_description.strip():
+          raise HTTPException(status_code=422, detail="job_description is required.")
+
+      # Run the AI pipeline
+      try:
+          result = tailor_resume(_BASE_RESUME, job_description)
+      except RuntimeError as e:
+          # tailor_resume raises RuntimeError if all retries are exhausted
+          raise HTTPException(status_code=502, detail=str(e))
+
+      # Write the DOCX to a temporary file.
+      # NamedTemporaryFile with delete=False creates a file that persists after
+      # the `with` block closes — FastAPI's FileResponse needs it to still exist
+      # when it streams the bytes back to the caller.
+      # We clean it up manually using a BackgroundTask (see below).
+      tmp = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+      tmp.close()
+      output_path = Path(tmp.name)
+
+      generate_resume_docx(result, output_path)
+
+      # Build a clean filename: resume_YYYY-MM-DD.docx
+      filename = f"resume_{date.today()}.docx"
+
+      # FileResponse streams the file back to the caller as a download.
+      # background= is a FastAPI hook that runs after the response is sent —
+      # we use it to delete the temp file once it's no longer needed.
+      from starlette.background import BackgroundTask
+      return FileResponse(
+          path=str(output_path),
+          media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          filename=filename,
+          background=BackgroundTask(output_path.unlink),
+      )
+  ```
+
+---
+
+### Step 3 — Run the server and test with `curl`
+
+- [x] Start the development server:
+
+  ```bash
+  cd backend
+  source .venv/bin/activate
+  uvicorn main:app --reload --port 8000
+  ```
+
+  > `--reload` means the server restarts automatically whenever you save a `.py` file. Useful during development — no need to stop and restart manually. Leave this terminal running.
+
+  You should see output like:
+  ```
+  INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+  INFO:     Started reloader process
+  ```
+
+- [x] In a **second terminal**, send a test request with `curl`:
+
+  ```bash
+  curl -X POST http://localhost:8000/generate \
+    -F "job_description=We're hiring a software engineer with Python experience. You'll build internal APIs and collaborate with product teams." \
+    --output test_resume.docx
+  ```
+
+  > `-F` sends a form field. `--output` saves the response body to a file instead of printing it to the terminal.
+
+  Verify:
+  - `curl` exits without an error
+  - `test_resume.docx` appears in your current directory
+  - Opening it shows a properly formatted resume with a new tailored summary
+
+- [x] Delete the test file once confirmed:
+
+  ```bash
+  rm test_resume.docx
+  ```
+
+- [x] Stop the server (`CTRL+C` in the first terminal).
+
+---
+
+### Step 4 — Verify CORS headers
+
+The Chrome extension will be refused if the CORS headers aren't set correctly. We can check them now with `curl` before writing any extension code — simulating the preflight check a browser sends before a cross-origin POST.
+
+- [x] Start the server again if it's not running:
+
+  ```bash
+  cd backend && source .venv/bin/activate && uvicorn main:app --reload --port 8000
+  ```
+
+- [x] In a second terminal, send a CORS preflight (`OPTIONS`) request:
+
+  ```bash
+  curl -i -X OPTIONS http://localhost:8000/generate \
+    -H "Origin: chrome-extension://fake-extension-id" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "Access-Control-Request-Headers: Content-Type"
+  ```
+
+  > `-i` shows the response headers. A browser sends this `OPTIONS` request automatically before any cross-origin POST — if the server doesn't respond with the right `Access-Control-Allow-*` headers, the actual POST is blocked.
+
+  Look for these headers in the response:
+  ```
+  access-control-allow-origin: chrome-extension://fake-extension-id
+  access-control-allow-methods: POST
+  access-control-allow-headers: Content-Type
+  ```
+
+  If they're present, CORS is configured correctly.
+
+  > **Note:** `CORSMiddleware` does exact string matching on `allow_origins` — `"chrome-extension://*"` does not work as a wildcard there. The fix is to use `allow_origin_regex=r"chrome-extension://.*"` instead, which is how the code is written in `main.py`.
+
+---

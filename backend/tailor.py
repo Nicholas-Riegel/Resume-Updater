@@ -52,17 +52,13 @@ def tailor_resume(resume: BaseResume, job_description: str) -> TailoredResumeOut
 
             # Assemble the full TailoredResumeOutput:
             # - summary comes from the AI
-            # - everything else is passed through from the base resume unchanged
-            #
-            # Why .model_dump()? BaseResume uses ExperienceEntry and SkillCategory
-            # types, but TailoredResumeOutput expects TailoredExperienceEntry and
-            # TailoredSkillCategory. Even though the fields are identical, Pydantic
-            # won't accept one type where the other is expected. Converting to plain
-            # dicts first lets Pydantic re-validate them into the correct types.
+            # - skills and experience are passed through directly from the base
+            #   resume — no conversion needed since TailoredResumeOutput now uses
+            #   the same ExperienceEntry and SkillCategory types as BaseResume.
             return TailoredResumeOutput(
                 summary    = summary,
-                skills     = [s.model_dump() for s in resume.skills],
-                experience = [e.model_dump() for e in resume.experience],
+                skills     = resume.skills,
+                experience = resume.experience,
             )
 
         except Exception as e:

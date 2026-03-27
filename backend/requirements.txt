@@ -10,3 +10,7 @@ weasyprint         # HTML → PDF rendering
 
 # AI
 openai             # works with both OpenAI and Ollama (same SDK, different base URL)
+
+# API / server
+python-multipart   # required by FastAPI to parse form data
+slowapi            # rate limiting for the /generate endpoint
