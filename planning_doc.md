@@ -39,7 +39,7 @@ FastAPI Backend
   → load base resume (local JSON file)
   → AI provider abstraction → OpenAI API or Ollama (config-switchable)
   → Pydantic validation of structured JSON output
-  → Document generator → DOCX (docxtpl) or PDF (WeasyPrint)
+  → Document generator → DOCX (python-docx, programmatic) or PDF (WeasyPrint)
   → FileResponse → file downloads in browser
 ```
 
@@ -50,13 +50,13 @@ FastAPI Backend
 **AI never handles formatting directly.**
 
 ```
-AI → structured JSON → Jinja2 template → final document
+AI → structured JSON → python-docx renderer → final document
 ```
 
 - AI receives the base resume as JSON and the job description
 - AI is constrained to reorder/reword only — it cannot invent roles, dates, or companies
 - Output is validated against a Pydantic schema before any document is generated
-- Formatting is handled entirely by templates, never by the AI
+- Formatting is handled entirely by the document renderer (`python-docx`), never by the AI
 
 ---
 
@@ -66,7 +66,7 @@ AI → structured JSON → Jinja2 template → final document
 |---|---|---|
 | Backend framework | FastAPI (Python) | Lightweight, Pydantic-native |
 | Resume schema | Pydantic | Validation of base resume and AI output |
-| DOCX generation | `docxtpl` | Jinja2 templating on top of `python-docx` |
+| DOCX generation | `python-docx` | Direct programmatic generation — fonts, spacing, and borders controlled in Python; no template file needed |
 | PDF generation | `WeasyPrint` | Pure Python; Puppeteer as optional comparison |
 | AI SDK | OpenAI Python SDK | Structured outputs mode for reliable JSON |
 | Local AI | Ollama | **MVP default** — OpenAI-compatible API, no cost, no token budget concerns |
@@ -105,26 +105,25 @@ No other code changes needed to switch providers.
 - Define `TailoredResumeOutput` schema (AI output constrained to fields that exist in `BaseResume`)
 - Create a sample `base_resume.json` to use throughout development
 
-### Phase 1: Document Generation Prototypes *(parallel)*
-- **DOCX:** Word template with `docxtpl` Jinja2 placeholders, filled from static sample data. Verify ATS layout: single column, standard headings (Experience, Education, Skills), no text boxes or tables.
-- **HTML → PDF:** Jinja2 HTML/CSS template rendered via WeasyPrint from static sample data. Optionally render the same template with Puppeteer for quality comparison.
-- **Decision point:** Choose primary output format (or support both) before proceeding.
+### Phase 1: Document Generation Prototypes *(complete)*
+- **DOCX ✓:** Programmatic document generation using `python-docx` directly. Initial prototype used `docxtpl` with a Word template, then rewritten for full programmatic control over fonts, spacing, borders, and layout. Output verified: single column, standard headings, ATS-compatible.
+- **HTML → PDF:** Skipped — DOCX chosen as primary format after prototype succeeded.
+- **Decision point ✓:** DOCX only. PDF is not editable and performs worse with ATS systems.
 
-### Phase 2: Template Polish *(depends on Phase 1)*
-- Style the DOCX template in LibreOffice: fonts, sizes, heading formatting, spacing between sections
-- Format the name as a large bold header; contact details on one line
-- Style section headings (EXPERIENCE, SKILLS, EDUCATION) as bold, visually distinct
-- Format experience entries: job title bold, company and date range on the same line
-- Format bullet points as proper list items
-- Fix skills rendering: comma-separated on one line using `{{ skills | join(', ') }}`
-- Fix `&` character escaping using the `| e` Jinja2 filter where needed
-- Re-run `generate_docx.py` and verify output looks like a professional resume
+### Phase 2: Template Polish *(complete)*
+- Rewrote `generate_docx.py` to build the document fully programmatically with `python-docx`, replacing the `docxtpl` template approach
+- Name as large bold header (22pt Calibri); title, citizenship, and contact details hardcoded in the script
+- Section headings (EXPERIENCE, SKILLS, EDUCATION) bold with a thin gray bottom border
+- Experience entries: job title bold, company/dates/location on one line in muted gray
+- Bullet points with hanging indent (en-dash) and tight paragraph spacing
+- Skills rendered as categorised rows: `bold category:  entry1, entry2, ...`
+- Output verified and confirmed ready to move forward
 
 ### Phase 3: AI Integration *(depends on Phase 0)*
 - Implement AI provider abstraction class
-- Design prompt: pass `BaseResume` JSON + sanitized job description, instruct AI to return `TailoredResumeOutput` JSON only
-- Use OpenAI structured outputs (or JSON mode) to enforce schema
-- Add retry logic for malformed AI responses
+- **v1 — Summary-only tailoring:** The AI's only job is to write a tailored 2–3 sentence summary that positions the candidate for the specific role. All experience entries, bullet points, and skill categories are passed through verbatim from `BaseResume` — the AI never touches them. This makes the AI task trivially simple (return a plain string, not a JSON blob), works reliably on any model, and eliminates all dropped-content risk.
+- Add retry logic for failed AI calls
+- **v2 — Bullet and skill rewording *(deferred)*:** Once the full pipeline is stable, the AI can be given the additional task of rewording bullets and reordering skill categories to better match the job language. This will require the more complex JSON output format and the Python-side merge safety net originally designed for this phase.
 
 ### Phase 4: API Endpoint *(depends on Phases 2 & 3)*
 - `POST /generate`: accepts `job_description` (string) + `base_resume` (JSON), returns `FileResponse`
@@ -143,9 +142,9 @@ No other code changes needed to switch providers.
 
 ## MVP Milestones
 
-1. DOCX generated from static resume data (plain structure verified)
-2. DOCX output styled as a professional resume
-3. AI returns validated structured JSON from a real job description
+1. ~~DOCX generated from static resume data (plain structure verified)~~ ✓
+2. ~~DOCX output styled as a professional resume~~ ✓
+3. AI returns a tailored summary for a real job description; full resume assembles correctly
 4. Full pipeline: job description in → tailored document downloaded
 5. Browser extension triggers the pipeline end-to-end with one click
 
@@ -169,7 +168,7 @@ No other code changes needed to switch providers.
 | AI invents fake experience | Truth layer in prompt + Pydantic validation (see detail below) |
 | Prompt injection via job description | Input sanitization + XML delimiters (see detail below) |
 | Formatting breaks in DOCX | Fix via template, never via AI |
-| AI returns malformed JSON | Retry logic + structured outputs mode |
+| AI returns malformed JSON | Retry logic; v1 AI only returns a plain string (summary) so malformed output is rare |
 | WeasyPrint CSS limitations | Puppeteer available as fallback |
 
 ---

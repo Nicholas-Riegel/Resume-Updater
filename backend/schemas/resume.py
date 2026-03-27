@@ -22,6 +22,7 @@ class SkillCategory(BaseModel):
 class ExperienceEntry(BaseModel):
     company: str                     # e.g. "Acme Corp"
     title: str                       # e.g. "Software Engineer"
+    location: Optional[str] = None   # e.g. "Remote" or "Bern, Switzerland"
     start_date: Optional[str] = None # stored as a plain string (e.g. "Jan 2021") — omit to hide dates on the resume
     end_date: Optional[str] = None   # e.g. "Mar 2023" or "Present" — omit to hide dates on the resume
     # Dates are strings, not date objects — resume formats vary too much to parse reliably.
@@ -50,6 +51,7 @@ class TailoredExperienceEntry(BaseModel):
     """
     company: str
     title: str
+    location: Optional[str] = None
     start_date: Optional[str] = None  # mirrors ExperienceEntry — optional so dates can be hidden
     end_date: Optional[str] = None
     bullets: list[str]               # reworded/reordered bullets — no new facts allowed

@@ -5,7 +5,7 @@ pydantic
 python-dotenv      # loads .env file for API keys and config
 
 # Document generation
-docxtpl            # DOCX templating (Jinja2 on top of python-docx)
+python-docx        # programmatic DOCX construction (fonts, spacing, layout in Python)
 weasyprint         # HTML → PDF rendering
 
 # AI

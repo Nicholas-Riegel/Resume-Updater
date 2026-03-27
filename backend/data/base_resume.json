@@ -4,6 +4,7 @@
     {
       "company": "B.E. Moore, LLC",
       "title": "Software Engineer",
+      "location": "Remote",
       "start_date": "Jul 2024",
       "end_date": "Jan 2026",
       "bullets": [
@@ -19,6 +20,7 @@
     {
       "company": "General Assembly",
       "title": "Software Engineering Student",
+      "location": "Remote",
       "start_date": "Apr 2024",
       "end_date": "Jun 2024",
       "bullets": [
@@ -29,6 +31,7 @@
     {
       "company": "CourseStorm, Inc.",
       "title": "Software QA Engineer",
+      "location": "Orono, Maine",
       "start_date": "Nov 2021",
       "end_date": "Mar 2024",
       "bullets": [
@@ -39,6 +42,7 @@
     {
       "company": "University of Bern / The Hill School",
       "title": "Teacher",
+      "location": "Switzerland & USA",
       "start_date": "Aug 2015",
       "end_date": "Jun 2020",
       "bullets": [
