@@ -1307,3 +1307,473 @@ The Chrome extension will be refused if the CORS headers aren't set correctly. W
   > **Note:** `CORSMiddleware` does exact string matching on `allow_origins` — `"chrome-extension://*"` does not work as a wildcard there. The fix is to use `allow_origin_regex=r"chrome-extension://.*"` instead, which is how the code is written in `main.py`.
 
 ---
+
+## Phase 5: Chrome Extension
+
+**Goal:** A Manifest V3 Chrome extension that lets the user click a button from any job listing, scrape the job description, send it to the backend, and trigger a DOCX download — all in one action.
+
+By the end of this phase:
+- The extension is installed in Chrome (unpacked, developer mode)
+- Clicking the toolbar icon opens a small popup showing the scraped job description
+- The user clicks "Generate Resume" and the tailored DOCX downloads automatically
+
+### How the extension works
+
+A Chrome Manifest V3 extension has three parts:
+
+| Part | File | What it does |
+|---|---|---|
+| Manifest | `manifest.json` | Declares permissions, files, and metadata |
+| Content script | `content.js` | Runs inside the job listing page — reads the DOM and extracts text |
+| Popup | `popup.html` + `popup.js` | The small window that appears when you click the extension icon — shows the scraped text and has the "Generate" button |
+
+**Message flow:**
+
+```
+User clicks extension icon
+  → popup.html opens
+  → popup.js sends a message to content.js: "get job description"
+  → content.js reads the page DOM and replies with the text
+  → popup.js shows the text in a <textarea> for review
+  → user clicks "Generate Resume"
+  → popup.js POSTs to http://localhost:8000/generate
+  → backend returns a DOCX file
+  → popup.js triggers a browser download
+```
+
+Why a content script? The popup runs in its own isolated context — it can't read the job listing page's DOM directly. The content script is injected into the page, so it *can* read the DOM. The popup and content script communicate by passing messages through Chrome's `chrome.runtime.sendMessage` / `chrome.tabs.sendMessage` API.
+
+---
+
+### New folder structure
+
+All extension files live in a new top-level folder:
+
+```
+extension/
+  manifest.json     ← declares the extension
+  popup.html        ← the popup's HTML structure
+  popup.js          ← popup logic: scrape, display, submit
+  content.js        ← injected into the page; reads the job description
+  icon.png          ← toolbar icon (any 128×128 PNG)
+```
+
+---
+
+### Step 1 — Create the extension folder and manifest
+
+The manifest is the extension's configuration file. It tells Chrome what permissions the extension needs, which files to use, and how it should behave.
+
+- [x] Create the `extension/` folder at the project root (alongside `backend/`).
+
+- [x] Create `extension/manifest.json`:
+
+  ```json
+  {
+    "manifest_version": 3,
+    "name": "Resume Tailor",
+    "version": "1.0",
+    "description": "Tailors your resume to the job listing on the current page.",
+
+    "action": {
+      "default_popup": "popup.html",
+      "default_title": "Resume Tailor"
+    },
+
+    "content_scripts": [
+      {
+        "matches": ["*://*/*"],
+        "js": ["content.js"]
+      }
+    ],
+
+    "host_permissions": [
+      "*://*/*",
+      "http://localhost:8000/*"
+    ]
+  }
+  ```
+
+  What each field means:
+  - `manifest_version: 3` — required for all new Chrome extensions (MV3 is the current standard)
+  - `action` — defines the toolbar button; `default_popup` is the HTML file that opens when you click it
+  - `content_scripts` — injects `content.js` into every tab (`*://*/*` = all URLs); this is what lets us read the page's job description text
+  - `host_permissions` — grants the extension permission to make requests to `localhost:8000` (the backend) and to inject content scripts into any page
+
+---
+
+### Step 2 — Write the content script
+
+`content.js` runs inside the job listing page. Its only job is to listen for a message from the popup and reply with the job description text.
+
+For v1, we use a simple heuristic: find the largest block of text on the page. This won't be perfect for every site, but it works well enough for LinkedIn, Indeed, and most job boards without needing site-specific selectors.
+
+- [x] Create `extension/content.js`:
+
+  ```javascript
+  // extension/content.js
+  //
+  // This script is injected into every tab the user visits.
+  // It listens for a "getJobDescription" message from the popup,
+  // then replies with the best candidate text it can find on the page.
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== "getJobDescription") return;
+
+    // Heuristic: find the element with the most text on the page.
+    // Job description sections are almost always the largest single block of text.
+    // We skip <script>, <style>, and <meta> tags.
+    const candidates = Array.from(
+      document.querySelectorAll("p, div, section, article, li")
+    );
+
+    let best = { text: "", length: 0 };
+
+    for (const el of candidates) {
+      // innerText gives rendered text (excluding hidden elements and script content)
+      const text = el.innerText?.trim() ?? "";
+      if (text.length > best.length) {
+        best = { text, length: text.length };
+      }
+    }
+
+    // If nothing useful was found, fall back to the full page body text
+    const result = best.length > 100
+      ? best.text
+      : document.body.innerText?.trim() ?? "";
+
+    sendResponse({ jobDescription: result });
+
+    // Return true to signal that we'll call sendResponse asynchronously
+    // (required by Chrome even when we respond synchronously)
+    return true;
+  });
+  ```
+
+---
+
+### Step 3 — Write the popup
+
+The popup is what the user sees when they click the extension icon. It has:
+- A `<textarea>` showing the scraped job description (editable, in case Chrome scraped the wrong text)
+- A "Generate Resume" button
+- A status message showing progress or errors
+
+- [x] Create `extension/popup.html`:
+
+  ```html
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Resume Tailor</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        width: 360px;
+        padding: 12px;
+        margin: 0;
+      }
+      h2 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+      textarea {
+        width: 100%;
+        height: 180px;
+        box-sizing: border-box;
+        font-size: 12px;
+        resize: vertical;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 6px;
+      }
+      button {
+        margin-top: 8px;
+        width: 100%;
+        padding: 8px;
+        font-size: 14px;
+        background: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #aaa;
+        cursor: default;
+      }
+      #status {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #555;
+        min-height: 16px;
+      }
+      #status.error { color: #c00; }
+    </style>
+  </head>
+  <body>
+    <h2>Resume Tailor</h2>
+    <textarea id="jobDescription" placeholder="Scraping job description…"></textarea>
+    <button id="generateBtn" disabled>Generate Resume</button>
+    <div id="status"></div>
+    <script src="popup.js"></script>
+  </body>
+  </html>
+  ```
+
+- [x] Create `extension/popup.js`:
+
+  ```javascript
+  // extension/popup.js
+  //
+  // Controls the popup UI.
+  //
+  // On load: asks the content script on the active tab for the job description.
+  // On button click: POSTs to the backend and downloads the returned DOCX.
+
+  const textarea   = document.getElementById("jobDescription");
+  const generateBtn = document.getElementById("generateBtn");
+  const statusDiv  = document.getElementById("status");
+
+  // ---------------------------------------------------------------------------
+  // On popup open — ask the content script for the job description
+  // ---------------------------------------------------------------------------
+
+  // Get the active tab so we know where to send the message
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    chrome.tabs.sendMessage(tab.id, { type: "getJobDescription" }, (response) => {
+      if (chrome.runtime.lastError || !response?.jobDescription) {
+        // Content script may not have loaded yet (e.g. on chrome:// pages)
+        textarea.value = "";
+        textarea.placeholder = "Could not scrape this page. Paste the job description manually.";
+        generateBtn.disabled = false;
+        return;
+      }
+
+      textarea.value = response.jobDescription;
+      generateBtn.disabled = false;
+      setStatus("Job description loaded. Review and click Generate.");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // On button click — send to backend, download the result
+  // ---------------------------------------------------------------------------
+
+  generateBtn.addEventListener("click", async () => {
+    const jobDescription = textarea.value.trim();
+
+    if (!jobDescription) {
+      setStatus("Please paste a job description first.", true);
+      return;
+    }
+
+    generateBtn.disabled = true;
+    setStatus("Generating resume… this takes about 10 seconds.");
+
+    try {
+      // Send the job description as form data — matches what the backend expects
+      const formData = new FormData();
+      formData.append("job_description", jobDescription);
+
+      const response = await fetch("http://localhost:8000/generate", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text}`);
+      }
+
+      // The response body is the DOCX file.
+      // We convert it to a blob, create a temporary download URL,
+      // and trigger a browser download — same as clicking a download link.
+      const blob = await response.blob();
+      const url  = URL.createObjectURL(blob);
+
+      // Extract the filename from the Content-Disposition header if present,
+      // otherwise fall back to a date-stamped default.
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : `resume_${new Date().toISOString().slice(0, 10)}.docx`;
+
+      // Create a hidden <a> tag, click it, then clean up
+      const a = document.createElement("a");
+      a.href     = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      setStatus("Download started!");
+    } catch (err) {
+      setStatus(`Error: ${err.message}`, true);
+    } finally {
+      generateBtn.disabled = false;
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Helper
+  // ---------------------------------------------------------------------------
+
+  function setStatus(msg, isError = false) {
+    statusDiv.textContent = msg;
+    statusDiv.className = isError ? "error" : "";
+  }
+  ```
+
+---
+
+### Step 4 — Add a toolbar icon
+
+The extension needs a PNG icon to show in the Chrome toolbar. Any square image works.
+
+- [x] Add a 128×128 PNG named `icon.png` to the `extension/` folder.
+
+  The simplest option: save any square PNG you like (a coloured square, a letter, anything) as `extension/icon.png`. Chrome will resize it as needed.
+
+  If you don't have one handy, you can generate one quickly with Python — run this from the project root:
+
+  ```bash
+  cd backend && source .venv/bin/activate && cd ..
+  python3 -c "
+  from PIL import Image, ImageDraw
+  img = Image.new('RGB', (128, 128), color='#1a73e8')
+  d = ImageDraw.Draw(img)
+  d.text((42, 44), 'RT', fill='white')
+  img.save('../extension/icon.png')
+  print('icon.png created')
+  "
+  ```
+
+  > This requires Pillow. If it's not installed: `pip install Pillow` in the venv. Or just drag any PNG into the folder and rename it.
+
+  Then update `manifest.json` to reference the icon:
+
+  ```json
+  "icons": {
+    "128": "icon.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Resume Tailor",
+    "default_icon": "icon.png"
+  }
+  ```
+
+---
+
+### Step 5 — Load the extension in Chrome
+
+Chrome can load an extension directly from a local folder without publishing it to the Web Store — this is called "loading unpacked".
+
+- [x] Open Chrome and go to `chrome://extensions`
+- [x] Enable **Developer mode** (toggle in the top-right corner)
+- [x] Click **Load unpacked**
+- [x] Select the `extension/` folder
+- [x] The "Resume Tailor" extension should appear with your icon in the toolbar
+
+  If you don't see the icon in the toolbar, click the puzzle-piece icon (Extensions menu) and pin it.
+
+---
+
+### Step 6 — Test end-to-end
+
+- [x] Start the backend server:
+
+  ```bash
+  cd backend && source .venv/bin/activate && uvicorn main:app --reload --port 8000
+  ```
+
+- [x] Open a job listing in Chrome (LinkedIn, Indeed, or any job board).
+
+- [x] Click the Resume Tailor icon in the toolbar.
+
+- [x] The popup should open with the job description pre-filled in the text area.
+
+- [x] Click **Generate Resume**.
+
+- [x] A `resume_YYYY-MM-DD.docx` file should download automatically.
+
+- [x] Open the DOCX and verify:
+  - The summary is tailored to the job description
+  - The experience and skills sections look correct
+  - The formatting is intact
+
+  What could go wrong and how to fix it:
+  - **Popup shows "Could not scrape this page"** — the content script didn't inject. Reload the tab, then try again. On some sites Chrome delays injection.
+  - **Textarea shows too much text / wrong text** — the heuristic picked the wrong element. Edit the text manually in the popup before clicking Generate. Step 7 adds site-specific selectors to fix this properly.
+  - **"Error: Failed to fetch"** — the backend isn't running. Start the uvicorn server.
+  - **"Server error 429"** — rate limit hit (6 requests/minute). Wait a moment and try again.
+
+---
+
+### Step 7 — Improve the scraper for key job sites *(optional but recommended)*
+
+The heuristic in Step 2 works on most pages but can grab navigation menus or sidebars instead of the job description. Adding site-specific selectors for the most common job boards makes it reliable.
+
+- [x] Update `extension/content.js` to try known selectors before falling back to the heuristic:
+
+  ```javascript
+  // extension/content.js
+  //
+  // v2: try site-specific selectors first, then fall back to the heuristic.
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== "getJobDescription") return;
+
+    const text = extractJobDescription();
+    sendResponse({ jobDescription: text });
+    return true;
+  });
+
+
+  function extractJobDescription() {
+    // Site-specific selectors — these target the job description container
+    // directly, which is much more reliable than the heuristic.
+    const siteSelectors = [
+      // LinkedIn
+      ".jobs-description__content",
+      ".jobs-box__html-content",
+      // Indeed
+      "#jobDescriptionText",
+      // Greenhouse (common ATS)
+      "#content",
+      // Lever (common ATS)
+      ".posting-content",
+      // Workday (common ATS)
+      "[data-automation-id='jobPostingDescription']",
+    ];
+
+    for (const selector of siteSelectors) {
+      const el = document.querySelector(selector);
+      if (el?.innerText?.trim().length > 100) {
+        return el.innerText.trim();
+      }
+    }
+
+    // Heuristic fallback: largest text block on the page
+    const candidates = Array.from(
+      document.querySelectorAll("p, div, section, article, li")
+    );
+
+    let best = { text: "", length: 0 };
+    for (const el of candidates) {
+      const text = el.innerText?.trim() ?? "";
+      if (text.length > best.length) {
+        best = { text, length: text.length };
+      }
+    }
+
+    return best.length > 100
+      ? best.text
+      : document.body.innerText?.trim() ?? "";
+  }
+  ```
+
+  After saving, go to `chrome://extensions` and click the **reload** button on Resume Tailor to pick up the change.
+
+---

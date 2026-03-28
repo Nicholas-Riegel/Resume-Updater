@@ -212,3 +212,26 @@ Job descriptions are untrusted external content. A malicious job posting could c
 3. **Role separation in prompt:** Use the system message (not user message) for all real instructions. The job description goes in the user message, clearly labelled. This takes advantage of model-level role separation.
 
 4. **Output validation as a final catch:** Even if an injected instruction somehow influenced the AI output, Pydantic validation will reject any response that doesn't conform to `TailoredResumeOutput` — preventing unexpected data from reaching the document or the user.
+
+---
+
+## Future Versions
+
+### v2 — Interactive Chat Window
+
+Rather than a fire-and-forget generate action, v2 would replace the popup with a persistent chat interface where the user can iterate with the LLM before committing to a DOCX.
+
+**Proposed flow:**
+1. Extension scrapes the job description as in v1
+2. The chat window opens pre-loaded with the job ad in context
+3. The LLM proposes a tailored summary and flags any experience bullets worth rewording to better match the role's language
+4. The user can reply — e.g. "make it more technical", "drop the management angle", "emphasise the Python work" — and the LLM refines its suggestions
+5. When satisfied, the user clicks "Generate Resume" — the agreed summary (and any accepted bullet changes) are sent to the backend and the DOCX downloads as normal
+
+**What this requires beyond v1:**
+- **Backend session state:** The server needs to track per-session conversation history (a list of `{role, content}` messages). A simple in-memory dictionary keyed by session ID is sufficient for local use. Sessions should have a TTL to avoid unbounded memory growth.
+- **New endpoint:** `POST /chat` — accepts a session ID, the current message, and optionally the job description (on first turn). Returns the LLM's reply. The `/generate` endpoint remains unchanged and is called only when the user finalises.
+- **Decision on bullet editing scope:** There's a meaningful difference between the LLM *suggesting* bullet changes in chat vs. the LLM *outputting structured JSON* that gets applied to the resume. The structured JSON path (v2 of Phase 3) is more powerful but requires more prompt engineering and validation. The chat path can start simpler — the LLM advises, and the final DOCX is still generated from LLM-produced structured output validated against the base resume.
+- **Richer popup UI:** The current popup is a small fixed-size window. A chat view needs a scrollable message thread, an input field, and a "Generate" button — likely a full browser tab or a larger side-panel rather than the standard popup.
+
+**Key constraint (unchanged from v1):** The base resume remains the single source of truth. The chat conversation may influence the summary and bullet wording, but the LLM may still not invent roles, companies, or dates not present in `base_resume.json`. Pydantic validation remains the final gate before the document is generated.

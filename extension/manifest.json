@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Resume Tailor",
+  "version": "1.0",
+  "description": "Tailors your resume to the job listing on the current page.",
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Resume Tailor",
+    "default_icon": "icon.png"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"]
+    }
+  ],
+
+  "host_permissions": [
+    "*://*/*",
+    "http://localhost:8000/*"
+  ],
+
+  "icons": {
+    "128": "icon.png"
+  }
+}
