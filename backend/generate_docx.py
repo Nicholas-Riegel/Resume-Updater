@@ -36,11 +36,17 @@ def _fmt_run(run, size=None, bold=False, italic=False, color=None):
     """
     Apply consistent font settings to a run (an inline span of text).
     All arguments are optional — only the ones passed will be set.
+
+    We explicitly set theme_color to None so Word's built-in theme system
+    can't override our rgb color — without this, headings and other
+    paragraphs that inherit a Word style can end up rendering in a lighter
+    themed gray even when an rgb color is set.
     """
     run.font.name  = FONT_NAME
     run.font.size  = size or BODY_SIZE
     run.bold       = bold
     run.italic     = italic
+    run.font.color.theme_color = None
     run.font.color.rgb = color or BLACK
 
 
@@ -94,7 +100,7 @@ def add_bullet(doc, text):
     fmt = p.paragraph_format
     fmt.left_indent        = Inches(0.25)
     fmt.first_line_indent  = Inches(-0.18)  # pulls the bullet left of the text
-    _fmt_run(p.add_run(f"\u2013  {text}"), size=SMALL_SIZE)  # en-dash bullet
+    _fmt_run(p.add_run(f"\u2022  {text}"), size=SMALL_SIZE)  # round bullet
     return p
 
 
@@ -118,6 +124,18 @@ def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Pat
     # Build the document
     # ---------------------------------------------------------------------------
     doc = Document()
+
+    # Override the built-in "Normal" style with explicit (non-theme) font settings.
+    # By default, python-docx's Normal style defines the font via an Office theme
+    # reference (e.g. w:asciiTheme="minorHFont") rather than a literal name.
+    # Pages and other non-Microsoft apps don't resolve Office theme fonts reliably,
+    # which causes some paragraphs to render in a different font or weight.
+    # Setting these here means every paragraph inherits a literal "Calibri, 10pt,
+    # near-black" as its base — no theme lookups needed.
+    normal = doc.styles["Normal"]
+    normal.font.name  = FONT_NAME
+    normal.font.size  = BODY_SIZE
+    normal.font.color.rgb = BLACK
 
     # Set page margins — 0.75" all round gives more usable space than Word's 1" default.
     for section in doc.sections:
@@ -157,8 +175,9 @@ def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Pat
 
     # -- Summary ----------------------------------------------------------------
     if resume.summary:
+        add_section_header(doc, "PROFESSIONAL SUMMARY")
         p = doc.add_paragraph()
-        _fmt_para(p, space_before=0, space_after=8)
+        _fmt_para(p, space_before=4, space_after=8)
         _fmt_run(p.add_run(resume.summary))
 
     # -- Technical Skills -------------------------------------------------------
@@ -185,7 +204,7 @@ def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Pat
         end   = job.end_date   or ""
         dates = f"{start}\u2013{end}" if (start or end) else ""
         parts = [job.company, dates, job.location or ""]
-        line  = "   |   ".join(part for part in parts if part)  # skip empty parts
+        line  = "  |  ".join(part for part in parts if part)  # skip empty parts
         p2 = doc.add_paragraph()
         _fmt_para(p2, space_before=0, space_after=3)
         _fmt_run(p2.add_run(line), size=SMALL_SIZE, color=DARK_GRAY)
@@ -202,18 +221,24 @@ def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Pat
     add_section_header(doc, "PROFESSIONAL DEVELOPMENT")
 
     prof_dev = [
-        ("Data Structures & Algorithms  |  Udemy  |  in progress",
+        ("Data Structures & Algorithms",
+         "Udemy  |  in progress",
          "Completing a comprehensive course covering Big O notation, recursion, sorting and searching algorithms, linked lists, trees, graphs, and dynamic programming."),
-        ("Advanced German  |  Französische Kirche  |  Bern",
+        ("Advanced German",
+         "Französische Kirche  |  Bern",
          "Studying and learning advanced German."),
     ]
-    for title, description in prof_dev:
+    for title, details, description in prof_dev:
+        # Title — bold
         p = doc.add_paragraph()
         _fmt_para(p, space_before=5, space_after=1)
         _fmt_run(p.add_run(title), bold=True)
+        # Details line — muted gray, not bold, matching Work Experience style
         p2 = doc.add_paragraph()
-        _fmt_para(p2, space_before=0, space_after=4)
-        _fmt_run(p2.add_run(description))
+        _fmt_para(p2, space_before=0, space_after=3)
+        _fmt_run(p2.add_run(details), size=SMALL_SIZE, color=DARK_GRAY)
+        # Description — bullet
+        add_bullet(doc, description)
 
     # -- Education --------------------------------------------------------------
     add_section_header(doc, "EDUCATION")
@@ -221,9 +246,7 @@ def generate_resume_docx(resume: TailoredResumeOutput, output_path: Path) -> Pat
     p = doc.add_paragraph()
     _fmt_para(p, space_before=5, space_after=1)
     _fmt_run(p.add_run("University of Toronto"), bold=True)
-    p2 = doc.add_paragraph()
-    _fmt_para(p2, space_before=0, space_after=4)
-    _fmt_run(p2.add_run("PhD — Philosophy"))
+    add_bullet(doc, "PhD — Philosophy")
 
     # -- Natural Languages ------------------------------------------------------
     add_section_header(doc, "NATURAL LANGUAGES")
