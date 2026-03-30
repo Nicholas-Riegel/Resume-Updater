@@ -22,12 +22,25 @@ def get_client() -> tuple[OpenAI, str]:
         model = os.getenv("OPENAI_MODEL", "gpt-4o")
         client = OpenAI(api_key=api_key)
 
+    elif provider == "google":
+        # Google AI Studio exposes an OpenAI-compatible REST API, so we can
+        # use the same OpenAI SDK — just pointing at a different base URL.
+        # Get a free API key at https://aistudio.google.com
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY is not set in .env")
+        model = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash")
+        client = OpenAI(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=api_key,
+        )
+
     else:
         # Default: Ollama running locally.
         # api_key is required by the SDK but not actually checked by Ollama,
         # so we use the conventional placeholder value "ollama".
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        model    = os.getenv("OLLAMA_MODEL", "llama3.2")
+        model    = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
         client   = OpenAI(base_url=base_url, api_key="ollama")
 
     return client, model

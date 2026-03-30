@@ -832,3 +832,9 @@ The heuristic in Step 2 works on most pages but can grab navigation menus or sid
 [x] Use round bullets for the bullet points indstead of the dashes we're currently using
 [x] descriptions of the professional development sections should be in bullet points
 [x] PhD - Philosophy should be indented as a bullet
+
+---
+
+## Bug Fixes & v1 Completion
+
+[x] AI summary hallucinated skills not in the resume (e.g. Angular) — fixed by computing the intersection of resume skills and the job description in Python (`_skills_relevant_to_job()` in `prompts.py`), so the model is only ever told about skills the candidate actually has that are relevant to the role

@@ -38,6 +38,36 @@ def _sanitize(text: str) -> str:
     return "\n".join(clean_lines)
 
 
+def _skills_relevant_to_job(resume: BaseResume, job_description: str) -> list[str]:
+    """
+    Return the subset of the candidate's skills that are mentioned in the job
+    description.
+
+    Why filter in Python rather than asking the AI to self-police?
+    Small local models cannot reliably honour a "don't mention X" rule when
+    the job description is full of X. Removing the skills from the data before
+    building the prompt is the only approach that actually works.
+
+    Matching strategy: split each skill entry into individual tokens
+    (e.g. "JavaScript/TypeScript" → ["JavaScript", "TypeScript"],
+          "FastAPI (Python)"       → ["FastAPI", "Python"])
+    then check whether any token appears in the job description text.
+    Tokens shorter than 3 characters are skipped to avoid false positives
+    on common words like "or", "is", etc.
+    """
+    job_lower = job_description.lower()
+
+    relevant = []
+    for category in resume.skills:
+        for entry in category.entries:
+            # Split on whitespace, slashes, ampersands, parentheses, commas
+            tokens = re.split(r"[\s/&()+,]+", entry)
+            if any(len(t) >= 3 and t.lower() in job_lower for t in tokens):
+                relevant.append(entry)
+
+    return relevant
+
+
 def build_prompt(resume: BaseResume, job_description: str) -> tuple[str, str]:
     """
     Returns (system_message, user_message) ready to send to the AI.
@@ -47,15 +77,29 @@ def build_prompt(resume: BaseResume, job_description: str) -> tuple[str, str]:
     """
     safe_job = _sanitize(job_description)
 
-    system_message = """You are a professional resume tailoring assistant.
+    # Filter the candidate's skills down to only those that appear in this
+    # specific job description. The model is then given only this short,
+    # curated list — Angular can't appear in the output because it was never
+    # in the candidate's resume and therefore never in the list we hand over.
+    # Fall back to the full skill list if nothing matched (e.g. a very short
+    # or vague job description) so the summary is never left empty.
+    relevant_skills = _skills_relevant_to_job(resume, safe_job)
+    if not relevant_skills:
+        relevant_skills = [entry for cat in resume.skills for entry in cat.entries]
+
+    relevant_skills_str = ", ".join(relevant_skills)
+    print(f"Relevant skills for this job: {relevant_skills_str}")
+
+    system_message = f"""You are a professional resume tailoring assistant.
 
 Your task: write a concise professional summary (2-3 sentences) that positions
 the candidate as a strong match for the job description provided.
 
 Rules you must follow without exception:
-1. Base the summary only on information present in the candidate's resume
-   provided below. Do not invent technologies, roles, or accomplishments
-   not present there.
+1. You may ONLY mention technologies, tools, or skills from this list —
+   these are the candidate's verified skills that are relevant to this role:
+   [{relevant_skills_str}]
+   Do not mention any technology or skill not on this list.
 2. Mirror the language and priorities of the job description where truthful
    and natural — this helps with ATS keyword matching.
 3. Return ONLY the summary text — no labels, no JSON, no explanation,
