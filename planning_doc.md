@@ -126,8 +126,9 @@ No other code changes needed to switch providers.
 - **v2 — Bullet and skill rewording *(deferred)*:** Once the full pipeline is stable, the AI can be given the additional task of rewording bullets and reordering skill categories to better match the job language. This will require the more complex JSON output format and the Python-side merge safety net originally designed for this phase.
 
 ### Phase 4: API Endpoint *(depends on Phases 2 & 3)*
-- `POST /generate`: accepts `job_description` (string) + `base_resume` (JSON), returns `FileResponse`
-- Wire full pipeline: sanitize → AI call → Pydantic validate → template render → download
+- `POST /preview`: accepts `job_description` (string), runs the AI summary pipeline, returns the summary as a JSON string — no document is generated
+- `POST /generate`: accepts `job_description` (string) + optional `summary` (string). If `summary` is provided (confirmed by the user in the popup), the AI call is skipped and the summary is used directly. Returns `FileResponse` (the DOCX).
+- Wire full pipeline: sanitize → AI call (or use confirmed summary) → Pydantic validate → template render → download
 - Configure `CORSMiddleware` to allow requests from the Chrome extension (`chrome-extension://*`)
 - Define output filename convention: `resume_<company>_<date>.docx` (derived from AI output or job description)
 
@@ -135,8 +136,13 @@ No other code changes needed to switch providers.
 - Chrome Manifest V3 extension
 - Declare `host_permissions: ["*://*/*"]` (or scoped to target job sites) to allow content script injection — this is standard MV3 boilerplate
 - Content script: extracts job description text from the active tab; implement site-specific selectors for primary targets (LinkedIn, Indeed) with a fallback heuristic (largest text block)
-- Popup: displays scraped text for user confirmation, sends to `/generate`, triggers file download
-- Goal: single button click from job listing to downloaded, tailored resume
+- Popup: two-stage UI — nothing is scraped or sent until the user explicitly acts
+  - **Stage 1 (idle):** single "Generate Summary" button; no textarea visible
+  - **Stage 2 (generating):** scrapes job description from current tab, POSTs to `/preview`; button disabled, Cancel available
+  - **Stage 3 (summary ready):** textarea appears with AI summary (editable); "Create Document" + "Cancel" buttons
+  - **Stage 4 (creating):** POSTs job description + confirmed summary to `/generate`; Create Document disabled, Cancel returns to Stage 3
+  - **Stage 5 (done):** download triggered, UI resets to Stage 3
+- Goal: user controls each step explicitly — nothing runs in the background without a button press
 
 ---
 

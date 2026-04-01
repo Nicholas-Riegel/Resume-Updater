@@ -1,67 +1,91 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <title>Resume Tailor</title>
-    <style>
-        body {
-            font-family: system-ui, sans-serif;
-            font-size: 13px;
-            width: 360px;
-            padding: 12px;
-            margin: 0;
-            background: #0f1e3d;
-            color: #e8edf5;
-        }
-        h2 {
-            margin: 0 0 8px;
-            font-size: 15px;
-            text-align: center;
-        }
-        textarea {
-            width: 100%;
-            height: 180px;
-            box-sizing: border-box;
-            font-size: 12px;
-            resize: vertical;
-            border: 1px solid #2e4a7a;
-            border-radius: 4px;
-            padding: 6px;
-            background: #a3bbe2;
-            color: #000000;
-        }
-        textarea::placeholder {
-            color: #1a3a6e;
-        }
-        button {
-            margin-top: 8px;
-            width: 100%;
-            padding: 8px;
-            font-size: 14px;
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:disabled {
-            background: #4a5568;
-            cursor: default;
-        }
-        #status {
-            margin-top: 8px;
-            font-size: 12px;
-            color: #94a3b8;
-            min-height: 16px;
-        }
-        #status.error { color: #f87171; }
-    </style>
-</head>
-<body>
-    <h2>Resume Tailor</h2>
-    <textarea id="jobDescription" placeholder="Scraping job description…"></textarea>
-    <button id="generateBtn" disabled>Generate Resume</button>
-    <div id="status"></div>
-    <script src="popup.js"></script>
-</body>
-</html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Resume Tailor</title>
+        <style>
+            body {
+                font-family: system-ui, sans-serif;
+                font-size: 13px;
+                width: 360px;
+                padding: 12px;
+                margin: 0;
+                background: #0f1e3d;
+                color: #e8edf5;
+            }
+            h2 {
+                margin: 0 0 8px;
+                font-size: 15px;
+                text-align: center;
+            }
+            textarea {
+                width: 100%;
+                height: 110px;
+                box-sizing: border-box;
+                font-size: 12px;
+                resize: vertical;
+                border: 1px solid #2e4a7a;
+                border-radius: 4px;
+                padding: 6px;
+                background: #a3bbe2;
+                color: #000000;
+            }
+            textarea::placeholder {
+                color: #1a3a6e;
+            }
+            button {
+                margin-top: 8px;
+                width: 100%;
+                padding: 8px;
+                font-size: 14px;
+                background: #3b82f6;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            button:disabled {
+                background: #4a5568;
+                cursor: default;
+            }
+            /* Secondary style for Cancel — less prominent than the main action buttons */
+            button.secondary {
+                background: transparent;
+                color: #94a3b8;
+                border: 1px solid #2e4a7a;
+                padding: 6px;
+                font-size: 12px;
+            }
+            button.secondary:hover {
+                color: #e8edf5;
+                border-color: #94a3b8;
+            }
+            #status {
+                margin-top: 8px;
+                font-size: 12px;
+                color: #94a3b8;
+                min-height: 16px;
+            }
+            #status.error { color: #f87171; }
+        </style>
+    </head>
+    <body>
+        <h2>Resume Tailor</h2>
+        <!-- Job description panel — shown after scraping (Stage 3+), editable by the user -->
+        <div id="jobSection" hidden>
+            <p class="section-label">Job description — edit if needed</p>
+            <textarea id="jobTextarea" placeholder="Scraped job description…"></textarea>
+        </div>
+        <!-- Summary panel — shown after AI responds (Stage 5+), editable by the user -->
+        <div id="summarySection" hidden>
+            <p class="section-label">AI summary — edit if needed</p>
+            <textarea id="summaryTextarea" placeholder="AI-generated summary…"></textarea>
+        </div>
+        <button id="scrapeBtn">Scrape Job Description</button>
+        <button id="generateSummaryBtn" hidden>Generate Summary</button>
+        <button id="createDocBtn" hidden>Create Document</button>
+        <button id="cancelBtn" hidden class="secondary">Cancel</button>
+        <div id="status"></div>
+        <script src="popup.js"></script>
+    </body>
+    </html>

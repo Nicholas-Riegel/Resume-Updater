@@ -95,6 +95,8 @@ def build_prompt(resume: BaseResume, job_description: str) -> tuple[str, str]:
 Your task: write a concise professional summary (2-3 sentences) that positions
 the candidate as a strong match for the job description provided.
 
+Do not claim experience, expertise, or proficiency unless it is clearly supported by the resume. Prefer conservative phrasing when uncertain.
+
 Rules you must follow without exception:
 1. You may ONLY mention technologies, tools, or skills from this list —
    these are the candidate's verified skills that are relevant to this role:

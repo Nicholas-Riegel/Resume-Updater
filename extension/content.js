@@ -25,10 +25,21 @@ function extractJobDescription() {
         "#jobDescriptionText",
         // Greenhouse (common ATS)
         "#content",
+        ".job-post-description",
         // Lever (common ATS)
         ".posting-content",
         // Workday (common ATS)
         "[data-automation-id='jobPostingDescription']",
+        // Ashby
+        ".ashby-job-posting-brief-description",
+        // SmartRecruiters
+        ".job-overview",
+        // Workable
+        ".job-description",
+        // Jobvite
+        ".jv-body",
+        // BambooHR
+        "#BambooHR-ATS",
     ];
 
     for (const selector of siteSelectors) {
@@ -38,8 +49,16 @@ function extractJobDescription() {
         }
     }
 
-    // Heuristic fallback: find the element with the most text on the page.
-    // Job description sections are almost always the largest single block of text.
+    // Heuristic fallback: find the element with the most text on the page,
+    // but skip obvious page-level containers. The tell for a layout wrapper
+    // is having many direct block-level children (nav bars, sidebars, footers
+    // all live inside them). A real job description section has mostly text
+    // nodes and inline elements, not a forest of <div> and <section> children.
+    //
+    // We allow up to 8 direct block children before skipping — erring on the
+    // side of grabbing more rather than less.
+    const BLOCK_TAGS = new Set(["DIV", "SECTION", "ARTICLE", "HEADER", "FOOTER", "MAIN", "ASIDE", "NAV"]);
+
     const candidates = Array.from(
         document.querySelectorAll("p, div, section, article, li")
     );
@@ -49,9 +68,16 @@ function extractJobDescription() {
     for (const el of candidates) {
         // innerText gives rendered text (excluding hidden elements and script content)
         const text = el.innerText?.trim() ?? "";
-        if (text.length > best.length) {
-            best = { text, length: text.length };
+        if (text.length <= best.length) continue;
+
+        // Count direct block-level children to detect layout containers.
+        let blockChildren = 0;
+        for (const child of el.children) {
+            if (BLOCK_TAGS.has(child.tagName)) blockChildren++;
         }
+        if (blockChildren > 8) continue;
+
+        best = { text, length: text.length };
     }
 
     // If nothing useful was found, fall back to the full page body text

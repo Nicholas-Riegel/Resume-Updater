@@ -1,12 +1,16 @@
 # The FastAPI application.
 #
-# Exposes one endpoint:
-#   POST /generate
+# Exposes two endpoints:
+#   POST /preview
 #     - accepts a job description as a form field
-#     - loads the base resume from disk
-#     - calls the AI to tailor the summary
-#     - generates a DOCX file
-#     - returns it as a file download
+#     - calls the AI to generate a tailored summary
+#     - returns {"summary": "..."} as JSON (no document built)
+#
+#   POST /generate
+#     - accepts a job description and an optional pre-approved summary
+#     - if summary is provided, skips the AI and builds the DOCX directly
+#     - if summary is absent, runs the full AI pipeline first
+#     - returns the tailored resume as a .docx file download
 #
 # Run with:
 #   uvicorn main:app --reload --port 8000
@@ -83,46 +87,44 @@ with open(_DATA_PATH) as f:
 # ---------------------------------------------------------------------------
 
 @app.post("/generate")
-@limiter.limit("6/minute")   # at most 6 tailoring requests per minute per IP
-async def generate(request: Request, job_description: str = Form(...)):
+@limiter.limit("6/minute")
+async def generate(
+    request: Request,
+    job_description: str = Form(...),
+    summary: str | None = Form(None),  # optional: pre-approved summary from Stage 1
+):
     """
-    Accept a job description, tailor the resume, and return a DOCX file.
+    Stage 2 of the two-stage popup UX — also works standalone (e.g. curl tests).
 
-    `request` must be the first argument because slowapi needs access to the
-    raw request object to read the caller's IP for rate limiting. FastAPI
-    injects it automatically.
+    If `summary` is provided (the user reviewed it in Stage 1 via /preview),
+    we pass it straight to tailor_resume() as confirmed_summary — so the AI
+    is bypassed entirely and the DOCX contains exactly the text the user approved.
 
-    `job_description: str = Form(...)` tells FastAPI to read a form field
-    called `job_description` from the POST body. The `...` means it's required
-    — FastAPI will return a 422 error automatically if it's missing.
+    If `summary` is absent (e.g. a direct curl call without Stage 1), we run
+    the full AI pipeline as normal for backward compatibility.
+
+    `summary: str | None = Form(None)` tells FastAPI this is an optional form
+    field — it's fine if the caller doesn't include it.
     """
     if not job_description.strip():
         raise HTTPException(status_code=422, detail="job_description is required.")
 
-    # Run the AI pipeline
     try:
-        result = tailor_resume(_BASE_RESUME, job_description)
+        # Pass confirmed_summary only if a non-empty summary was provided.
+        # `summary or None` converts an empty string to None — treating it the
+        # same as a missing field so we don't accidentally build a blank document.
+        result = tailor_resume(_BASE_RESUME, job_description, confirmed_summary=summary or None)
     except RuntimeError as e:
-        # tailor_resume raises RuntimeError if all retries are exhausted
         raise HTTPException(status_code=502, detail=str(e))
 
-    # Write the DOCX to a temporary file.
-    # NamedTemporaryFile with delete=False creates a file that persists after
-    # the `with` block closes — FastAPI's FileResponse needs it to still exist
-    # when it streams the bytes back to the caller.
-    # We clean it up manually using a BackgroundTask (see below).
     tmp = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
     tmp.close()
     output_path = Path(tmp.name)
 
     generate_resume_docx(result, output_path)
 
-    # Build a clean filename: resume_YYYY-MM-DD.docx
     filename = f"resume_{date.today()}.docx"
 
-    # FileResponse streams the file back to the caller as a download.
-    # background= is a FastAPI hook that runs after the response is sent —
-    # we use it to delete the temp file once it's no longer needed.
     from starlette.background import BackgroundTask
     return FileResponse(
         path=str(output_path),
@@ -130,3 +132,26 @@ async def generate(request: Request, job_description: str = Form(...)):
         filename=filename,
         background=BackgroundTask(output_path.unlink),
     )
+
+@app.post("/preview")
+@limiter.limit("6/minute")   # same rate limit as /generate
+async def preview(request: Request, job_description: str = Form(...)):
+    """
+    Stage 1 of the two-stage popup UX.
+
+    Runs the full AI pipeline and returns just the generated summary as JSON
+    — so the user can read and optionally edit it in the popup before the
+    DOCX is created. No document is built here.
+
+    Returns: {"summary": "<AI-generated summary text>"}
+    """
+    if not job_description.strip():
+        raise HTTPException(status_code=422, detail="job_description is required.")
+
+    try:
+        result = tailor_resume(_BASE_RESUME, job_description)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    # FastAPI automatically serialises a plain dict to a JSON response.
+    return {"summary": result.summary}

@@ -838,3 +838,112 @@ The heuristic in Step 2 works on most pages but can grab navigation menus or sid
 ## Bug Fixes & v1 Completion
 
 [x] AI summary hallucinated skills not in the resume (e.g. Angular) — fixed by computing the intersection of resume skills and the job description in Python (`_skills_relevant_to_job()` in `prompts.py`), so the model is only ever told about skills the candidate actually has that are relevant to the role
+---
+
+## Phase 8: Multi-Stage Popup UX
+
+**Goal:** Replace the single-shot popup with an explicit, step-by-step flow. The user scrapes the job description, reviews and optionally edits it, generates an AI summary, reviews and optionally edits that too, then creates the DOCX. Every step is visible and controllable.
+
+**Why:** The original popup silently scraped the page and immediately generated a summary with no user input. The new flow gives the user full visibility and control at each stage — they can see exactly what text the AI was given, edit it if the scraper grabbed the wrong section, and review the summary before committing to a document.
+
+**Stage flow:**
+
+| Stage | What the user sees |
+|---|---|
+| 1 — Popup opens | One button: **Scrape Job Description** |
+| 2 — Scraping | Button disabled briefly |
+| 3 — Job description ready | Editable job description textarea, **Generate Summary** + **Cancel** |
+| 4 — Generating summary | Elapsed timer ("Generating summary… 8s"), Generate Summary disabled, **Cancel** aborts |
+| 5 — Summary ready | Both textareas (job description + AI summary, both editable), **Create Document** + **Cancel** |
+| 6 — Creating document | Create Document disabled, **Cancel** returns to Stage 5 |
+| Done | "Download started!", UI stays on Stage 5 — user can edit and re-create |
+
+---
+
+### Step 1 — Backend: add `/preview` endpoint and update `/generate`
+
+Before touching any extension code, get the backend ready for the two-stage flow. Two small changes:
+
+**`tailor.py`** — add an optional `confirmed_summary` parameter to `tailor_resume()`. If the caller provides it, skip the AI call entirely and assemble the `TailoredResumeOutput` directly from the confirmed summary + base resume. This ensures the DOCX generation step never re-calls the AI.
+
+**`main.py`** — add a `POST /preview` endpoint and update `POST /generate`:
+- `/preview` receives a `job_description` form field, calls `tailor_resume()` normally, and returns `{"summary": "..."}` as JSON
+- `/generate` gains an optional `summary` form field; if present, it passes it as `confirmed_summary` to `tailor_resume()` to skip the AI
+
+- [x] Update `backend/tailor.py` — add `confirmed_summary` optional parameter:
+
+  Added `confirmed_summary: str | None = None` as a third parameter. A fast-path block at the top of the function returns a `TailoredResumeOutput` directly if a confirmed summary is provided, skipping all AI calls and retry logic.
+
+  > **Why `str | None = None`?** This is a Python 3.10+ way of saying "this argument is either a string or `None`, and if the caller doesn't pass it, it defaults to `None`". Using `None` as the sentinel means we can distinguish between "no summary provided" and "user passed an empty string".
+
+- [x] Add `POST /preview` to `backend/main.py` and update `POST /generate` to accept the optional `summary` field:
+
+  `/preview` calls `tailor_resume()` and returns `{"summary": "..."}` as JSON. `/generate` gains `summary: str | None = Form(None)`; if provided, it is passed as `confirmed_summary` to `tailor_resume()` so the AI is bypassed entirely.
+
+- [x] Test both endpoints with `curl` to verify before touching extension code:
+
+  Start the server:
+  ```bash
+  cd backend && source .venv/bin/activate && uvicorn main:app --reload --port 8000
+  ```
+
+  Test `/preview` (should return a JSON summary string):
+  ```bash
+  curl -X POST http://localhost:8000/preview \
+    -F "job_description=We're hiring a Python engineer to build internal APIs."
+  ```
+  PASSED
+
+  Test `/generate` with a confirmed summary (should download a DOCX using the provided summary, not call the AI):
+  ```bash
+  curl -X POST http://localhost:8000/generate \
+    -F "job_description=We're hiring a Python engineer to build internal APIs." \
+    -F "summary=A software engineer with strong Python and API experience." \
+    --output test_resume.docx
+  ```
+PASSED
+
+  Verify:
+  - `/preview` returns `{"summary": "..."}` with a coherent tailored paragraph
+  - The DOCX from `/generate` contains the exact summary string you passed in (not a re-generated one)
+  - Delete `test_resume.docx` once confirmed
+
+---
+
+### Step 2 — Extension: rewrite the popup for the multi-stage flow
+
+The popup was rewritten to use an explicit `setStage(n)` pattern. Every UI transition — hiding/showing elements, enabling/disabling buttons — happens inside that one function. Button handlers are clean: they do their async work and call `setStage()` when done.
+
+An `AbortController` is used to cancel the `/preview` fetch during Stage 4. When `.abort()` is called, the fetch throws an `AbortError` which is caught and returns the UI to Stage 3 without an error message.
+
+An elapsed-time counter (`setInterval`, 1s tick) runs during Stage 4 so the user knows the app is still working. It is always cleared in `finally` regardless of whether the request succeeded, failed, or was cancelled.
+
+**What changed from the original plan:** After building the initial two-stage flow, the UX was revised to add an explicit Scrape step first. The user now controls when scraping happens, can edit the scraped job description before the AI sees it, and sees both the job description and the AI summary side-by-side before creating the document.
+
+---
+
+- [x] **2.1** — Update `extension/popup.html`:
+
+  Added `jobSection` (editable textarea for scraped job description), `summarySection` (editable textarea for AI summary), `scrapeBtn`, `generateSummaryBtn` (starts hidden), `createDocBtn` (starts hidden), `cancelBtn` (secondary style). Both textareas 110px tall to fit side-by-side in the popup. Removed `readonly` from the job description textarea so the user can edit it.
+
+- [x] **2.2** — Rewrite `extension/popup.js`:
+
+  Full rewrite around `setStage(1..6)`. Key points:
+  - Stage 1: scrape button only. Nothing happens automatically on popup open.
+  - Stage 2: scraping in progress (brief). Scrape button disabled.
+  - Stage 3: job description in editable textarea. User edits if needed, then clicks Generate Summary.
+  - Stage 4: AI generating. Elapsed timer in status ("Generating summary… 8s"). Cancel aborts the fetch and returns to Stage 3.
+  - Stage 5: both textareas visible. User compares job description vs AI summary, edits if needed, then clicks Create Document.
+  - Stage 6: building DOCX. Create Document disabled. Cancel returns to Stage 5.
+  - Done: "Download started!". Stays on Stage 5 — user can edit and re-create without re-scraping or re-generating.
+
+---
+
+- [x] **2.3** — Reload the extension and test end-to-end:
+
+  Full 6-stage flow confirmed working. Cancel paths tested:
+  - Cancel during Stage 4 (AI generating) — returns to Stage 3 with job description intact
+  - Cancel during Stage 5/6 — clears summary, returns to Stage 3
+  - Cancel during Stage 3 — clears everything, returns to Stage 1
+
+  Bug fixed during testing: `setStage` reset block had stale defaults from the old 4-stage version, causing `generateSummaryBtn` to appear on Stage 1. Fixed by rewriting the reset block to hide all elements unconditionally before each stage block turns things on.

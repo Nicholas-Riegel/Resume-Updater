@@ -12,12 +12,40 @@ from schemas.resume import BaseResume, TailoredResumeOutput
 from ai_client import get_client
 from prompts import build_prompt
 
-# qwen3 and other "thinking" models wrap their internal reasoning in
-# <think>...</think> blocks before the actual answer. We strip those out
-# so they never appear in the resume summary.
+# Compiled patterns used to clean up common model output artifacts
 _THINK_TAG = re.compile(r"<think>.*?</think>", re.DOTALL)
+# A leading preamble like "Here is a concise professional summary:\n\n"
+_PREAMBLE = re.compile(r'^[^"\n]{10,150}:\s*\n+', re.DOTALL)
+# Wrapping curly or straight quotes around the entire summary
+_WRAPPING_QUOTES = re.compile(r'^[\u201c"\'](.*?)[\u201d"\'\s]*$', re.DOTALL)
 
 MAX_RETRIES = 3  # how many times to retry before giving up
+
+
+def _clean_summary(raw: str) -> str:
+    """
+    Strip common model output artifacts from a raw summary string.
+
+    1. <think>...</think> blocks — used by qwen3-style "thinking" models to
+       show their reasoning before the answer. Never belongs in a resume.
+    2. Leading preamble sentence — models often prefix the answer with a
+       meta-comment like "Here is a concise professional summary:\n\n".
+       We detect and remove any line that ends with a colon followed by
+       newlines at the start of the response.
+    3. Wrapping quotes — some models wrap the summary in " " or \" \".
+    """
+    # 1. Strip thinking blocks
+    text = _THINK_TAG.sub("", raw).strip()
+
+    # 2. Strip leading preamble (e.g. "Here is a professional summary:\n\n")
+    text = _PREAMBLE.sub("", text).strip()
+
+    # 3. Strip wrapping quote characters (straight or curly, single or double)
+    m = _WRAPPING_QUOTES.match(text)
+    if m:
+        text = m.group(1).strip()
+
+    return text
 
 
 def _normalize(token: str) -> str:
@@ -90,11 +118,19 @@ def _find_violations(summary: str, resume: BaseResume, job_description: str) -> 
     return list(violations)
 
 
-def tailor_resume(resume: BaseResume, job_description: str) -> TailoredResumeOutput:
+def tailor_resume(
+    resume: BaseResume,
+    job_description: str,
+    confirmed_summary: str | None = None,   # Stage 2 fast-path: skip the AI
+) -> TailoredResumeOutput:
     """
     Given a validated BaseResume and a raw job description string, call the AI
     to generate a tailored summary, then assemble and return a TailoredResumeOutput
     with the AI summary and all other fields copied unchanged from the base resume.
+
+    If confirmed_summary is provided (the user already reviewed it in the popup),
+    the AI is skipped entirely and the output is assembled directly — guaranteeing
+    the DOCX contains exactly the text the user approved.
 
     On each attempt we validate the summary with _find_violations(). If the model
     hallucinated skills from the job description, we append its bad output and a
@@ -103,6 +139,17 @@ def tailor_resume(resume: BaseResume, job_description: str) -> TailoredResumeOut
 
     Raises RuntimeError if the AI fails to return a clean summary after MAX_RETRIES.
     """
+    # Stage 2 fast-path: the user already reviewed and approved a summary in
+    # the popup, so there's no need to call the AI again. We assemble the
+    # TailoredResumeOutput directly, guaranteeing the DOCX contains exactly
+    # the text the user saw — no surprises.
+    if confirmed_summary is not None:
+        return TailoredResumeOutput(
+            summary    = confirmed_summary,
+            skills     = resume.skills,
+            experience = resume.experience,
+        )
+
     client, model = get_client()
     system_msg, user_msg = build_prompt(resume, job_description)
 
@@ -131,7 +178,7 @@ def tailor_resume(resume: BaseResume, job_description: str) -> TailoredResumeOut
             # Strip <think>...</think> blocks (qwen3-style thinking models),
             # then strip surrounding whitespace.
             raw = response.choices[0].message.content
-            summary = _THINK_TAG.sub("", raw).strip()
+            summary = _clean_summary(raw)
 
             if not summary:
                 raise ValueError("AI returned an empty summary.")
