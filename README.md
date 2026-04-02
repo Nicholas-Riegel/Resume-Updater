@@ -58,6 +58,8 @@ The AI **only writes the professional summary**. Experience, job titles, dates, 
 
 ## Project structure
 
+> **Note:** `planning_doc.md` and `development_doc.md` are included in this repo intentionally. `planning_doc.md` was written before development began and documents the architecture decisions and trade-offs made upfront. `development_doc.md` is a step-by-step build log updated throughout the project. Both are worth a read if you want to understand the thinking behind the code.
+
 ```
 backend/
   main.py            — FastAPI app; /preview and /generate endpoints
@@ -159,6 +161,12 @@ The model and Ollama URL can be changed in `backend/ai_client.py`. The rate limi
 
 ---
 
-## License
+## Planned features
 
-MIT
+**Resume upload**
+Currently the base resume must be manually edited as a JSON file. A planned improvement is to let users upload an existing resume (PDF or Word document) directly through the extension or a local web UI. The backend would parse the uploaded file and convert it into the base resume JSON format, removing the need to hand-edit JSON.
+
+**Full resume tailoring**
+At the moment only the professional summary is rewritten by the AI. A planned extension of this is to allow the AI to suggest tailored edits across the entire resume — reordering or reweighting bullet points, adjusting skills emphasis, and rephrasing experience descriptions to better match each job description. The base resume JSON would remain the source of truth; suggestions would be presented as a diff for the user to accept or reject before the document is generated.
+
+---
