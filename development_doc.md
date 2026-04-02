@@ -947,3 +947,113 @@ An elapsed-time counter (`setInterval`, 1s tick) runs during Stage 4 so the user
   - Cancel during Stage 3 — clears everything, returns to Stage 1
 
   Bug fixed during testing: `setStage` reset block had stale defaults from the old 4-stage version, causing `generateSummaryBtn` to appear on Stage 1. Fixed by rewriting the reset block to hide all elements unconditionally before each stage block turns things on.
+
+---
+
+## Phase 9: Automated Testing
+
+**Goal:** Add a proper `pytest` test suite covering the most critical and testable parts of the backend. Tests should run without a live Ollama instance — AI calls are replaced with mocks so the suite is fast and reliable.
+
+By the end of this phase:
+- A `backend/tests/` folder exists with one test file per module under test
+- Running `pytest` from inside `backend/` finds and runs all tests automatically
+- The hallucination checker, Pydantic schemas, document generator, and API endpoints all have coverage
+- The old ad-hoc `test_tailor.py` script is replaced by proper tests
+
+---
+
+### Setup
+
+- [x] Create the `backend/tests/` folder and an empty `__init__.py` inside it:
+
+  ```bash
+  mkdir -p backend/tests
+  touch backend/tests/__init__.py
+  ```
+
+  > The `__init__.py` tells Python that `tests/` is a package, which ensures imports work correctly when `pytest` runs the files inside it.
+
+- [x] Add `pytest` and `httpx` to `backend/requirements.txt` and install them:
+
+  ```
+  # Testing
+  pytest             # test runner
+  httpx              # required by FastAPI's TestClient
+  ```
+
+  ```bash
+  cd backend && source .venv/bin/activate && pip install pytest httpx
+  ```
+
+---
+
+### Step 1 — Schema validation tests (`tests/test_schemas.py`)
+
+Test that the Pydantic models in `schemas/resume.py` accept valid data and reject invalid data.
+
+What to cover:
+- A fully valid `BaseResume` object parses without errors
+- A fully valid `TailoredResumeOutput` object parses without errors
+- Missing required fields raise a `ValidationError`
+- Wrong types (e.g. a string where a list is expected) raise a `ValidationError`
+
+- [x] Create `backend/tests/test_schemas.py`
+
+---
+
+### Step 2 — Hallucination checker tests (`tests/test_tailor.py`)
+
+The hallucination check in `tailor.py` is the most important logic in the project — it's the main guard against the AI inventing experience. It deserves thorough tests.
+
+What to cover:
+- A clean summary (no invented content) passes the check
+- A summary that mentions a company not in the resume is flagged
+- A summary that mentions a job title not in the resume is flagged
+- The `confirmed_summary` fast path assembles the correct output without calling the AI
+
+These tests use Python's `unittest.mock.patch` to replace the actual AI call with a fake response — so no Ollama instance is needed.
+
+- [x] Create `backend/tests/test_tailor.py`
+
+---
+
+### Step 3 — Document generator tests (`tests/test_generate_docx.py`)
+
+Test that `generate_resume_docx()` produces a valid `.docx` file from a known input.
+
+What to cover:
+- The function returns a path to a file that actually exists
+- The output file is a valid `.docx` (can be opened with `python-docx` without errors)
+- Key content is present in the document (name, at least one job title)
+
+- [x] Create `backend/tests/test_generate_docx.py`
+
+---
+
+### Step 4 — API endpoint tests (`tests/test_api.py`)
+
+Use FastAPI's built-in `TestClient` to test the HTTP endpoints without running a live server.
+
+What to cover:
+- `POST /preview` with a valid job description returns `200` and a JSON body with a `summary` key
+- `POST /generate` with a confirmed summary returns `200` and a `.docx` file (check `Content-Type`)
+- `POST /preview` with a missing `job_description` field returns `422`
+- Rate limiting returns `429` after the limit is exceeded
+
+All AI calls in these tests are mocked out so the tests don't require Ollama.
+
+- [x] Create `backend/tests/test_api.py`
+
+---
+
+### Step 5 — Run the full suite
+
+- [ ] Run all tests from inside the `backend/` folder:
+
+  ```bash
+  cd backend && source .venv/bin/activate && pytest tests/ -v
+  ```
+
+  All tests should pass. The `-v` flag prints each test name individually so you can see exactly what ran.
+
+- [ ] Delete the old `backend/test_tailor.py` script now that it's been superseded by the proper test suite.

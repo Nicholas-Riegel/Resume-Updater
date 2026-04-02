@@ -14,3 +14,7 @@ openai             # works with both OpenAI and Ollama (same SDK, different base
 # API / server
 python-multipart   # required by FastAPI to parse form data
 slowapi            # rate limiting for the /generate endpoint
+
+# Testing
+pytest             # test runner — finds and runs all test_*.py files automatically
+httpx              # required by FastAPI's TestClient for making in-process HTTP requests
