@@ -1048,7 +1048,7 @@ All AI calls in these tests are mocked out so the tests don't require Ollama.
 
 ### Step 5 — Run the full suite
 
-- [ ] Run all tests from inside the `backend/` folder:
+- [x] Run all tests from inside the `backend/` folder:
 
   ```bash
   cd backend && source .venv/bin/activate && pytest tests/ -v
@@ -1056,7 +1056,7 @@ All AI calls in these tests are mocked out so the tests don't require Ollama.
 
   All tests should pass. The `-v` flag prints each test name individually so you can see exactly what ran.
 
-- [ ] Delete the old `backend/test_tailor.py` script now that it's been superseded by the proper test suite.
+- [x] Delete the old `backend/test_tailor.py` script now that it's been superseded by the proper test suite.
 
 ---
 
@@ -1124,7 +1124,7 @@ Each test follows the same pattern:
 3. Open `popup.html` as a `file://` URL
 4. Click buttons and assert which elements are visible, hidden, enabled, or disabled
 
-- [ ] Create `e2e_testing/tests/popup.spec.ts`:
+- [x] Create `e2e_testing/tests/popup.spec.ts`:
 
   ```ts
 
@@ -1136,7 +1136,7 @@ Each test follows the same pattern:
 
 ### Step 3 — Run the tests
 
-- [ ] Run the full suite from inside `e2e_testing/`:
+- [x] Run the full suite from inside `e2e_testing/`:
 
   ```bash
   cd e2e_testing

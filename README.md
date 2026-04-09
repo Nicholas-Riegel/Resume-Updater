@@ -161,6 +161,38 @@ The model and Ollama URL can be changed in `backend/ai_client.py`. The rate limi
 
 ---
 
+## Testing
+
+The project has two separate test suites — one for the Python backend, one for the browser extension frontend.
+
+### Backend unit tests (pytest)
+
+Tests cover the Pydantic schema validation, the hallucination checker, the document generator, and the FastAPI endpoints. AI calls are mocked so no Ollama instance is needed to run them.
+
+```bash
+cd backend
+source .venv/bin/activate
+pytest tests/ -v
+```
+
+### Frontend / end-to-end tests (Playwright)
+
+Tests drive the extension popup's UI directly — clicking buttons and asserting that the correct elements are shown, hidden, enabled, or disabled at each stage. The Chrome extension APIs (`chrome.tabs.*`) and all backend `fetch` calls are mocked, so no server or browser extension installation is needed.
+
+```bash
+cd e2e_testing
+npm test
+```
+
+To watch the tests run in a visible browser window:
+
+```bash
+cd e2e_testing
+npm run test:headed
+```
+
+---
+
 ## Planned features
 
 **Resume upload**
