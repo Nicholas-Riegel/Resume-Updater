@@ -1,0 +1,14 @@
+{
+    "name": "resume-tailor-e2e",
+    "version": "1.0.0",
+    "description": "Playwright frontend tests for the Resume Tailor Chrome extension popup",
+    "scripts": {
+        "test": "playwright test",
+        "test:headed": "playwright test --headed"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.43.0",
+        "@types/node": "^25.5.2",
+        "typescript": "^5.0.0"
+    }
+}

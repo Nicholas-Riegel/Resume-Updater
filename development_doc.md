@@ -1057,3 +1057,103 @@ All AI calls in these tests are mocked out so the tests don't require Ollama.
   All tests should pass. The `-v` flag prints each test name individually so you can see exactly what ran.
 
 - [ ] Delete the old `backend/test_tailor.py` script now that it's been superseded by the proper test suite.
+
+---
+
+## Phase 10: Playwright Frontend Testing
+
+**Goal:** Add Playwright end-to-end tests that drive the extension popup's UI directly — clicking buttons, checking which elements are visible and which are hidden, and verifying that the `setStage()` state machine in `popup.js` behaves correctly at every step.
+
+By the end of this phase:
+- An `e2e_testing/` folder exists at the project root with its own `package.json` and Playwright config
+- A single test file (`tests/popup.spec.ts`) covers all six stage transitions and the key cancel paths
+- Tests run without a live backend — `fetch` calls to `localhost:8000` are intercepted and faked by Playwright
+- Tests run without loading the extension into Chrome — `chrome.tabs.*` API calls are mocked with an injected script
+
+> **Why a separate folder with its own `package.json`?** Playwright is a Node.js tool — it doesn't belong inside the Python `backend/` folder. Keeping it in `e2e_testing/` with its own `npm` dependencies isolates it cleanly from the Python environment.
+
+> **Why not test inside a real Chrome extension context?** Loading an unpacked extension in Playwright requires knowing the extension's ID, which changes every time Chrome loads it unless you set a `key` field in `manifest.json`. Instead, tests open `popup.html` directly as a `file://` URL and mock the two Chrome APIs that `popup.js` calls (`chrome.tabs.query` and `chrome.tabs.sendMessage`). This is simpler and tests the logic that actually matters: the `setStage()` state machine.
+
+---
+
+### Setup
+
+- [x] Create the `e2e_testing/` folder at the project root and a `tests/` folder inside it:
+
+- [x] Create `e2e_testing/package.json`:
+
+  > `devDependencies` means these packages are only needed to run tests — they don't ship with any production code. `typescript` is included so your editor can type-check the test files; Playwright uses its own internal compiler to actually run them, so no separate build step is needed.
+
+- [x] Install Playwright and download a Chromium browser binary:
+
+  ```bash
+  cd e2e_testing
+  npm install
+  npx playwright install chromium
+  cd ..
+  ```
+
+  > `npm install` reads `package.json` and downloads Playwright into a local `node_modules/` folder. `npx playwright install chromium` downloads the Chromium browser binary Playwright will control — this is separate from your system Chrome, and Playwright manages it to ensure consistent test behaviour across machines.
+
+- [x] Add Playwright's generated folders to `.gitignore` so test artefacts are never committed:
+
+  Open `.gitignore` at the project root and add:
+
+  ```
+  e2e_testing/node_modules/
+  e2e_testing/test-results/
+  e2e_testing/playwright-report/
+  ```
+
+---
+
+### Step 1 — Playwright config (`e2e_testing/playwright.config.ts`)
+
+The config file tells Playwright where to look for tests, which browser to use, and global defaults.
+
+- [x] Create `e2e_testing/playwright.config.ts`:
+
+
+---
+
+### Step 2 — Write the test file (`e2e_testing/tests/popup.spec.ts`)
+
+Each test follows the same pattern:
+1. Inject a mock `chrome` object using `page.addInitScript()` — this runs before `popup.js`, so the popup never sees a missing `chrome` global
+2. Intercept `fetch` calls to `localhost:8000` with `page.route()` — the popup gets instant fake responses instead of hitting a real server
+3. Open `popup.html` as a `file://` URL
+4. Click buttons and assert which elements are visible, hidden, enabled, or disabled
+
+- [ ] Create `e2e_testing/tests/popup.spec.ts`:
+
+  ```ts
+
+
+
+  ```
+
+---
+
+### Step 3 — Run the tests
+
+- [ ] Run the full suite from inside `e2e_testing/`:
+
+  ```bash
+  cd e2e_testing
+  npm test
+  cd ..
+  ```
+
+  > `npm test` runs the `"test"` script from `package.json`, which calls `playwright test`. Playwright finds all `.spec.ts` files inside `tests/`, runs them in Chromium, and prints a summary of passed and failed tests.
+
+  All seven tests should pass. If any fail, Playwright prints the expected vs actual value and the line number — look there first.
+
+  To watch the tests run in a visible browser window (helpful for debugging a failing test):
+
+  ```bash
+  cd e2e_testing
+  npm run test:headed
+  cd ..
+  ```
+
+  > In headed mode a Chromium window opens and you can watch each click and stage transition happen in real time.

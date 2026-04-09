@@ -23,3 +23,8 @@ COMMANDS.md
 
 # copilot commands
 .github/
+
+# playwright testing files
+e2e_testing/node_modules/
+e2e_testing/test-results/
+e2e_testing/playwright-report/
